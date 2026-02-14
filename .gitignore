@@ -5,6 +5,7 @@ client/dist/
 # .NET
 **/bin/
 **/obj/
+*.binlog
 
 # Env
 .env
