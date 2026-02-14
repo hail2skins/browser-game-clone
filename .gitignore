@@ -1,0 +1,14 @@
+# Node
+node_modules/
+client/dist/
+
+# .NET
+**/bin/
+**/obj/
+
+# Env
+.env
+**/.env
+
+# OS
+.DS_Store
