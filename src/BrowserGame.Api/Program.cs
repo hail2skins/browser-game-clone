@@ -6,8 +6,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-// Load .env file for local development (before building configuration)
-Env.Load();
+// Load .env file only for local development (skip if Railway env vars are present)
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RAILWAY_ENVIRONMENT")))
+{
+    Env.Load();
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,9 +26,10 @@ var pgDb = Environment.GetEnvironmentVariable("PGDATABASE") ?? Environment.GetEn
 var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "postgres";
 var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "";
 
-// Internal Railway network - no SSL needed
-var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword};SSL Mode=Disable";
+// Build connection string - no explicit SSL mode for internal Railway network
+var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword}";
 Console.WriteLine($"Connecting to database at {pgHost}:{pgPort}/{pgDb} as {pgUser}");
+Console.WriteLine($"PGHOST env var: {Environment.GetEnvironmentVariable("PGHOST")}");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
