@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-// Load .env file for local development (Railway has env vars built-in)
+// Load .env file for local development
 Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,8 +23,6 @@ var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
 var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "postgres";
 
 var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword}";
-
-Console.WriteLine($"Connecting to: {pgHost}:{pgPort}/{pgDb}");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -64,50 +62,17 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Enable Swagger in all environments (useful for API testing)
+// Swagger in all environments
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseCors("client");
-
-// Serve static files BEFORE API routes (so root / serves index.html)
-var possiblePaths = new[]
-{
-    Path.Combine(app.Environment.ContentRootPath, "..", "..", "client", "dist"),
-    Path.Combine(app.Environment.ContentRootPath, "..", "client", "dist"),
-    Path.Combine(app.Environment.ContentRootPath, "client", "dist"),
-};
-
-var clientDistPath = possiblePaths.FirstOrDefault(Directory.Exists);
-
-if (clientDistPath != null)
-{
-    Console.WriteLine($"Serving static files from: {clientDistPath}");
-    app.UseDefaultFiles();
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(clientDistPath),
-        RequestPath = ""
-    });
-}
-
 app.UseAuthentication();
 app.UseAuthorization();
-
-// API routes (static files take precedence)
 app.MapControllers();
 
-// SPA fallback (must come after MapControllers)
-if (clientDistPath != null)
-{
-    app.MapFallbackToFile("index.html", new StaticFileOptions
-    {
-        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(clientDistPath)
-    });
-}
-
-// Retry database connection with delay for Railway service startup
+// Retry database connection
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -118,22 +83,13 @@ using (var scope = app.Services.CreateScope())
     {
         try
         {
-            Console.WriteLine($"Database connection attempt {i + 1}/{maxRetries}...");
             db.Database.Migrate();
-            Console.WriteLine("Database connected successfully!");
             break;
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"Failed: {ex.Message}");
-            if (i < maxRetries - 1)
-            {
-                Thread.Sleep(retryDelay);
-            }
-            else
-            {
-                throw;
-            }
+            if (i < maxRetries - 1) Thread.Sleep(retryDelay);
+            else throw;
         }
     }
 }

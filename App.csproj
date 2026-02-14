@@ -25,15 +25,6 @@
     </Content>
   </ItemGroup>
 
-  <!-- Include client build files -->
-  <ItemGroup>
-    <None Include="client/dist/**/*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>client/dist/%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <PublishItemType>Content</PublishItemType>
-    </None>
-  </ItemGroup>
-
   <!-- All package references -->
   <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
