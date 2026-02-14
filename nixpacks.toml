@@ -1,0 +1,12 @@
+# Nixpacks configuration for .NET API
+[phases.build]
+cmds = [
+  "cd api && dotnet restore",
+  "cd api && dotnet publish -c Release -o out"
+]
+
+[phases.setup]
+nixPkgs = ["dotnet-sdk_10"]
+
+[start]
+cmd = "cd api && ./out/api"

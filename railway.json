@@ -4,11 +4,11 @@
     "api": {
       "rootDirectory": "api",
       "build": {
-        "builder": "DOCKERFILE",
-        "dockerfilePath": "Dockerfile"
+        "builder": "NIXPACKS",
+        "nixpacksConfigPath": "../nixpacks.toml"
       },
       "deploy": {
-        "startCommand": "dotnet api.dll",
+        "startCommand": "./out/api",
         "healthcheckPath": "/swagger",
         "restartPolicyType": "ON_FAILURE",
         "restartPolicyMaxRetries": 10
@@ -17,8 +17,7 @@
     "client": {
       "rootDirectory": "client",
       "build": {
-        "builder": "DOCKERFILE",
-        "dockerfilePath": "Dockerfile"
+        "builder": "NIXPACKS"
       },
       "deploy": {
         "startCommand": "nginx -g 'daemon off;'",
