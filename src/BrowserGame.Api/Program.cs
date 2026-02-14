@@ -18,11 +18,24 @@ builder.Services.AddSwaggerGen();
 // Build connection string from Railway env vars or fall back to ConnectionStrings__DefaultConnection
 string connectionString;
 
-// Railway provides DATABASE_URL as a full connection string
+// Railway provides DATABASE_URL as postgres://user:pass@host:port/db format
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 if (!string.IsNullOrEmpty(databaseUrl))
 {
-    connectionString = databaseUrl;
+    // Parse postgres://user:password@host:port/database format
+    try
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':');
+        var user = userInfo[0];
+        var password = userInfo.Length > 1 ? userInfo[1] : "";
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+    }
+    catch
+    {
+        // If parsing fails, use as-is (might already be in Npgsql format)
+        connectionString = databaseUrl;
+    }
 }
 else
 {
