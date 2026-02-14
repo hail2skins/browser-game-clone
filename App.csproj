@@ -8,10 +8,14 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <AssemblyName>App</AssemblyName>
+    <RootNamespace>BrowserGame.Api</RootNamespace>
+    <PreserveCompilationContext>true</PreserveCompilationContext>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="api/**/*.cs" Exclude="api/**/bin/**;api/**/obj/**" />
+    <ApiSourceFiles Include="api/**/*.cs" Exclude="api/**/bin/**;api/**/obj/**" />
+    <Compile Include="@(ApiSourceFiles)" />
   </ItemGroup>
   
   <ItemGroup>
