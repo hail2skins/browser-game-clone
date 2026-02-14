@@ -2,6 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "services": {
     "api": {
+      "rootDirectory": "api",
       "build": {
         "builder": "RAILPACK"
       },
