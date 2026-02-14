@@ -1,9 +1,13 @@
 using System.Text;
 using api.Data;
 using api.Services;
+using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+
+// Load .env file for local development (before building configuration)
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
