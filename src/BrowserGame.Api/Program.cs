@@ -3,7 +3,10 @@ using api.Data;
 using api.Services;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 
 // Load .env file for local development
@@ -61,6 +64,23 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Serve built frontend from client/dist at root
+var clientDistPath = Path.Combine(app.Environment.ContentRootPath, "client", "dist");
+if (Directory.Exists(clientDistPath))
+{
+    var staticFileProvider = new PhysicalFileProvider(clientDistPath);
+
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = staticFileProvider
+    });
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = staticFileProvider
+    });
+}
 
 // Swagger in all environments
 app.UseSwagger();
