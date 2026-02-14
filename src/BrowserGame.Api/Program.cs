@@ -18,8 +18,11 @@ builder.Services.AddSwaggerGen();
 // Build connection string from Railway env vars or fall back to ConnectionStrings__DefaultConnection
 string connectionString;
 
-// Railway provides DATABASE_URL as postgres://user:pass@host:port/db format
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+// Railway provides DATABASE_PRIVATE_URL for internal network (no SSL needed)
+// DATABASE_URL is for public network (requires SSL)
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_PRIVATE_URL") 
+    ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     // Parse postgres://user:password@host:port/database format
@@ -29,7 +32,14 @@ if (!string.IsNullOrEmpty(databaseUrl))
         var userInfo = uri.UserInfo.Split(':');
         var user = userInfo[0];
         var password = userInfo.Length > 1 ? userInfo[1] : "";
-        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+        
+        // Internal Railway network (.railway.internal) doesn't need SSL
+        // Public network (viaduct.proxy.rlwy.net) requires SSL
+        var isInternal = uri.Host.Contains(".railway.internal");
+        var sslMode = isInternal ? "Disable" : "Require;Trust Server Certificate=true";
+        
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode={sslMode}";
+        Console.WriteLine($"Using {(isInternal ? "internal" : "public")} database connection to {uri.Host}");
     }
     catch
     {
@@ -99,10 +109,37 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Retry database connection (services may not start simultaneously on Railway)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    var maxRetries = 5;
+    var retryDelay = TimeSpan.FromSeconds(3);
+    
+    for (int i = 0; i < maxRetries; i++)
+    {
+        try
+        {
+            Console.WriteLine($"Attempting database connection (attempt {i + 1}/{maxRetries})...");
+            db.Database.Migrate();
+            Console.WriteLine("Database migration successful!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Database connection failed: {ex.Message}");
+            if (i < maxRetries - 1)
+            {
+                Console.WriteLine($"Waiting {retryDelay.TotalSeconds}s before retry...");
+                Thread.Sleep(retryDelay);
+            }
+            else
+            {
+                Console.WriteLine("Max retries reached. Database unavailable.");
+                throw;
+            }
+        }
+    }
 }
 
 app.Run();
