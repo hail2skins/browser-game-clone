@@ -66,20 +66,46 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Serve built frontend from client/dist at root
-var clientDistPath = Path.Combine(app.Environment.ContentRootPath, "client", "dist");
-if (Directory.Exists(clientDistPath))
+// Try multiple possible locations for different environments
+var possiblePaths = new[]
 {
+    Path.Combine(app.Environment.ContentRootPath, "client", "dist"),                    // Published: /app/client/dist
+    Path.Combine(AppContext.BaseDirectory, "client", "dist"),                           // Alternative: same as ContentRootPath
+    Path.Combine(Directory.GetCurrentDirectory(), "client", "dist"),                    // Current directory
+};
+
+var clientDistPath = possiblePaths.FirstOrDefault(Directory.Exists);
+
+if (clientDistPath != null)
+{
+    Console.WriteLine($"Serving static files from: {clientDistPath}");
     var staticFileProvider = new PhysicalFileProvider(clientDistPath);
 
     app.UseDefaultFiles(new DefaultFilesOptions
     {
-        FileProvider = staticFileProvider
+        FileProvider = staticFileProvider,
+        DefaultFileNames = new List<string> { "index.html" }
     });
 
     app.UseStaticFiles(new StaticFileOptions
     {
+        FileProvider = staticFileProvider,
+        RequestPath = ""
+    });
+    
+    // SPA fallback for client-side routing
+    app.MapFallbackToFile("index.html", new StaticFileOptions
+    {
         FileProvider = staticFileProvider
     });
+}
+else
+{
+    Console.WriteLine($"WARNING: client/dist not found. Checked paths:");
+    foreach (var path in possiblePaths)
+    {
+        Console.WriteLine($"  - {path}");
+    }
 }
 
 // Swagger in all environments
