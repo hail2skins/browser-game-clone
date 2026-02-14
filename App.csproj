@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Exe</OutputType>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
     <AssemblyName>App</AssemblyName>
     <RootNamespace>BrowserGame.Api</RootNamespace>
