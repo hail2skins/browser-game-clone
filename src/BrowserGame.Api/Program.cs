@@ -19,9 +19,7 @@ builder.Services.AddSwaggerGen();
 string connectionString;
 
 // Railway provides DATABASE_PRIVATE_URL for internal network (no SSL needed)
-// DATABASE_URL is for public network (requires SSL)
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_PRIVATE_URL") 
-    ?? Environment.GetEnvironmentVariable("DATABASE_URL");
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_PRIVATE_URL");
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
@@ -33,13 +31,9 @@ if (!string.IsNullOrEmpty(databaseUrl))
         var user = userInfo[0];
         var password = userInfo.Length > 1 ? userInfo[1] : "";
         
-        // Internal Railway network (.railway.internal) doesn't need SSL
-        // Public network (viaduct.proxy.rlwy.net) requires SSL
-        var isInternal = uri.Host.Contains(".railway.internal");
-        var sslMode = isInternal ? "Disable" : "Require;Trust Server Certificate=true";
-        
-        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode={sslMode}";
-        Console.WriteLine($"Using {(isInternal ? "internal" : "public")} database connection to {uri.Host}");
+        // Internal Railway network - no SSL needed
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode=Disable";
+        Console.WriteLine($"Using Railway internal database: {uri.Host}");
     }
     catch
     {
