@@ -11,8 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="api/**/*.cs" />
-    <Content Include="api/**/appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="api/**/*.cs" Exclude="api/**/bin/**;api/**/obj/**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Content Include="api/**/appsettings*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
