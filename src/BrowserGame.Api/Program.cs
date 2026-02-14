@@ -15,43 +15,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Build connection string from Railway env vars or fall back to ConnectionStrings__DefaultConnection
-string connectionString;
+// Build connection string from Railway env vars
+// Railway provides individual PG* variables for internal connections
+var pgHost = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
+var pgPort = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
+var pgDb = Environment.GetEnvironmentVariable("PGDATABASE") ?? Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "railway";
+var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "postgres";
+var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "";
 
-// Railway provides DATABASE_PRIVATE_URL for internal network (no SSL needed)
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_PRIVATE_URL");
-
-if (!string.IsNullOrEmpty(databaseUrl))
-{
-    // Parse postgres://user:password@host:port/database format
-    try
-    {
-        var uri = new Uri(databaseUrl);
-        var userInfo = uri.UserInfo.Split(':');
-        var user = userInfo[0];
-        var password = userInfo.Length > 1 ? userInfo[1] : "";
-        
-        // Internal Railway network - no SSL needed
-        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={user};Password={password};SSL Mode=Disable";
-        Console.WriteLine($"Using Railway internal database: {uri.Host}");
-    }
-    catch
-    {
-        // If parsing fails, use as-is (might already be in Npgsql format)
-        connectionString = databaseUrl;
-    }
-}
-else
-{
-    // Build from individual Railway PostgreSQL env vars or local .env
-    var pgHost = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
-    var pgPort = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
-    var pgDb = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? Environment.GetEnvironmentVariable("PGDATABASE") ?? "hamco_dev";
-    var pgUser = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? Environment.GetEnvironmentVariable("PGUSER") ?? "art";
-    var pgPassword = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? Environment.GetEnvironmentVariable("PGPASSWORD") ?? "";
-    
-    connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword}";
-}
+// Internal Railway network - no SSL needed
+var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword};SSL Mode=Disable";
+Console.WriteLine($"Connecting to database at {pgHost}:{pgPort}/{pgDb} as {pgUser}");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
