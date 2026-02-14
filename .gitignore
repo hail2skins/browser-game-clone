@@ -5,7 +5,14 @@ client/dist/
 # .NET
 **/bin/
 **/obj/
+**/bin\\*/
+**/obj\\*/
 *.binlog
+# Windows-style paths that break builds
+**/bin\\Debug/
+**/bin\\Release/
+**/obj\\Debug/
+**/obj\\Release/
 
 # Env
 .env
