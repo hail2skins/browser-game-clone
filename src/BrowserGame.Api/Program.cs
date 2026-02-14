@@ -6,11 +6,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-// Load .env file only for local development (skip if Railway env vars are present)
-if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RAILWAY_ENVIRONMENT")))
-{
-    Env.Load();
-}
+// Load .env file for local development (Railway has env vars built-in)
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,18 +15,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Build connection string from Railway env vars
-// Railway provides individual PG* variables for internal connections
+// Build connection string from environment variables
+// Works the same locally (via .env) and Railway (via env vars)
 var pgHost = Environment.GetEnvironmentVariable("PGHOST") ?? "localhost";
 var pgPort = Environment.GetEnvironmentVariable("PGPORT") ?? "5432";
-var pgDb = Environment.GetEnvironmentVariable("PGDATABASE") ?? Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "railway";
-var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "postgres";
-var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "";
+var pgDb = Environment.GetEnvironmentVariable("PGDATABASE") ?? "railway";
+var pgUser = Environment.GetEnvironmentVariable("PGUSER") ?? "postgres";
+var pgPassword = Environment.GetEnvironmentVariable("PGPASSWORD") ?? "postgres";
 
-// Build connection string - no explicit SSL mode for internal Railway network
 var connectionString = $"Host={pgHost};Port={pgPort};Database={pgDb};Username={pgUser};Password={pgPassword}";
-Console.WriteLine($"Connecting to database at {pgHost}:{pgPort}/{pgDb} as {pgUser}");
-Console.WriteLine($"PGHOST env var: {Environment.GetEnvironmentVariable("PGHOST")}");
+
+Console.WriteLine($"Connecting to: {pgHost}:{pgPort}/{pgDb}");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -81,33 +77,31 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Retry database connection (services may not start simultaneously on Railway)
+// Retry database connection with delay for Railway service startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var maxRetries = 5;
-    var retryDelay = TimeSpan.FromSeconds(3);
+    var maxRetries = 10;
+    var retryDelay = TimeSpan.FromSeconds(2);
     
     for (int i = 0; i < maxRetries; i++)
     {
         try
         {
-            Console.WriteLine($"Attempting database connection (attempt {i + 1}/{maxRetries})...");
+            Console.WriteLine($"Database connection attempt {i + 1}/{maxRetries}...");
             db.Database.Migrate();
-            Console.WriteLine("Database migration successful!");
+            Console.WriteLine("Database connected successfully!");
             break;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Database connection failed: {ex.Message}");
+            Console.WriteLine($"Failed: {ex.Message}");
             if (i < maxRetries - 1)
             {
-                Console.WriteLine($"Waiting {retryDelay.TotalSeconds}s before retry...");
                 Thread.Sleep(retryDelay);
             }
             else
             {
-                Console.WriteLine("Max retries reached. Database unavailable.");
                 throw;
             }
         }
