@@ -1,7 +1,24 @@
-ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=hamco_dev;Username=art;Password=
-Jwt__Secret=CHANGE_THIS_TO_A_LONG_RANDOM_SECRET
+# Copy this file to .env and fill in your values
+# Railway automatically provides DATABASE_URL or POSTGRES_* variables
+
+# Option 1: Full connection string (Railway provides this as DATABASE_URL)
+# DATABASE_URL=postgresql://username:password@host:port/database
+
+# Option 2: Individual PostgreSQL variables
+PGHOST=localhost
+PGPORT=5432
+POSTGRES_DB=hamco_dev
+POSTGRES_USER=art
+POSTGRES_PASSWORD=
+
+# JWT Settings (generate a secure secret: openssl rand -base64 32)
+Jwt__Secret=CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_MIN_32_CHARS
 Jwt__Issuer=tribalwars-clone
 Jwt__Audience=tribalwars-clone-client
 Jwt__ExpiresMinutes=120
+
+# Client URL (for CORS)
 ClientUrl=http://localhost:5173
+
+# ASP.NET Core
 ASPNETCORE_URLS=http://0.0.0.0:5250
