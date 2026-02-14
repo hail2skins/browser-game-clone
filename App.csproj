@@ -10,8 +10,7 @@
 
   <ItemGroup>
     <Compile Include="api/**/*.cs" />
-    <EmbeddedResource Include="api/**/*.resx" />
-    <Content Include="api/**/appsettings*.json" />
+    <Content Include="api/**/appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
