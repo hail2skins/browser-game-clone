@@ -8,6 +8,8 @@ type AuthState = {
   isAdmin: boolean
 }
 
+type ToastKind = 'success' | 'error' | 'info'
+
 const API_BASE = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5250'
 const app = document.querySelector<HTMLDivElement>('#app')!
 
@@ -16,6 +18,27 @@ const auth: AuthState = {
   email: localStorage.getItem('email'),
   isApproved: localStorage.getItem('isApproved') === 'true',
   isAdmin: localStorage.getItem('isAdmin') === 'true'
+}
+
+function ensureToastHost() {
+  if (document.getElementById('toast-stack')) return
+  const host = document.createElement('div')
+  host.id = 'toast-stack'
+  host.className = 'toast-stack'
+  document.body.appendChild(host)
+}
+
+function toast(message: string, kind: ToastKind = 'info') {
+  ensureToastHost()
+  const host = document.getElementById('toast-stack')!
+  const el = document.createElement('div')
+  el.className = `toast ${kind === 'error' ? 'toast-error' : ''}`
+  el.textContent = message
+  host.appendChild(el)
+  setTimeout(() => {
+    el.style.opacity = '0'
+    setTimeout(() => el.remove(), 220)
+  }, 3200)
 }
 
 function saveAuth() {
@@ -47,28 +70,42 @@ async function api(path: string, method = 'GET', body?: any) {
   return res.json()
 }
 
-function mountLogin() {
-  app.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-6">
-      <div class="medieval-card w-full max-w-md">
-        <h1 class="text-2xl font-bold mb-4">Tribal Wars Clone</h1>
-        <p class="mb-4 text-zinc-400">Return to your village, lord.</p>
-        <form id="loginForm" class="space-y-3">
-          <input class="input-field" name="email" type="email" placeholder="Email" required />
-          <input class="input-field" name="password" type="password" placeholder="Password" required />
-          <button class="btn-primary w-full" type="submit">Login</button>
-        </form>
-        <div class="mt-4 flex justify-between text-sm">
-          <a href="#register" class="text-amber-100">Register</a>
-          <a href="#forgot" class="text-amber-100">Forgot password?</a>
-        </div>
-        <p id="error" class="text-red-400 mt-3 text-sm"></p>
+function authScaffold(title: string, subtitle: string, inner: string) {
+  return `
+    <div class="min-h-screen flex items-center justify-center p-4 sm:p-6">
+      <div class="medieval-panel w-full max-w-md p-5 sm:p-7">
+        <h1 class="fantasy-title text-2xl sm:text-3xl font-semibold">${title}</h1>
+        <div class="ornate-divider"></div>
+        <p class="text-[0.95rem] text-amber-100/80 mb-5">${subtitle}</p>
+        ${inner}
       </div>
     </div>`
+}
+
+function mountLogin() {
+  app.innerHTML = authScaffold(
+    'Tribal Wars Clone',
+    'Return to your village, my liege. Your people await your command.',
+    `
+      <form id="loginForm" class="space-y-3">
+        <input class="input-field" name="email" type="email" placeholder="Raven Email" required />
+        <input class="input-field" name="password" type="password" placeholder="Passphrase" required />
+        <button id="loginBtn" class="btn btn-primary w-full" type="submit">Enter the Realm</button>
+      </form>
+      <div class="mt-4 flex justify-between text-sm">
+        <a href="#register" class="text-amber-200 hover:text-amber-100">Create account</a>
+        <a href="#forgot" class="text-amber-200 hover:text-amber-100">Forgot passphrase?</a>
+      </div>
+      <p id="error" class="text-red-300 mt-3 text-sm min-h-5"></p>
+    `
+  )
 
   document.getElementById('loginForm')!.addEventListener('submit', async (e) => {
     e.preventDefault()
     const f = new FormData(e.target as HTMLFormElement)
+    const btn = document.getElementById('loginBtn') as HTMLButtonElement
+    btn.disabled = true
+    btn.innerHTML = `Summoning session <span class="loading-runes ml-2"><span></span><span></span><span></span></span>`
     try {
       const data = await api('/api/auth/login', 'POST', {
         email: f.get('email'),
@@ -79,28 +116,36 @@ function mountLogin() {
       auth.isApproved = data.isApproved
       auth.isAdmin = data.isAdmin
       saveAuth()
+      toast('Welcome back, commander.', 'success')
       route()
     } catch (err: any) {
       document.getElementById('error')!.textContent = err.message
+      toast('Login failed. Check your credentials.', 'error')
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Enter the Realm'
     }
   })
 }
 
 function mountRegister() {
-  app.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-6">
-      <div class="medieval-card w-full max-w-md">
-        <h1 class="text-2xl font-bold mb-4">Join the Realm</h1>
-        <form id="registerForm" class="space-y-3">
-          <input class="input-field" name="email" type="email" placeholder="Email" required />
-          <input class="input-field" name="password" type="password" placeholder="Password" required />
-          <input class="input-field" name="inviteCode" placeholder="Invite Code" required />
-          <button class="btn-primary w-full" type="submit">Register</button>
-        </form>
-        <a href="#login" class="text-amber-100 text-sm block mt-4">Back to login</a>
-        <p id="msg" class="mt-3 text-sm"></p>
-      </div>
-    </div>`
+  app.innerHTML = authScaffold(
+    'Join the Realm',
+    'New settlers require an invitation sigil from the council.',
+    `
+      <form id="registerForm" class="space-y-3">
+        <input class="input-field" name="email" type="email" placeholder="Raven Email" required />
+        <input class="input-field" name="password" type="password" placeholder="Passphrase" required />
+        <label class="block">
+          <span class="text-xs uppercase tracking-wide text-amber-200 font-semibold">Invite Code (Required)</span>
+          <input class="input-field mt-1 border-amber-400/70" name="inviteCode" placeholder="Council Sigil" required />
+        </label>
+        <button class="btn btn-primary w-full" type="submit">Swear Fealty</button>
+      </form>
+      <a href="#login" class="text-amber-200 text-sm block mt-4 hover:text-amber-100">Back to keep gate</a>
+      <p id="msg" class="mt-3 text-sm min-h-5"></p>
+    `
+  )
 
   document.getElementById('registerForm')!.addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -112,30 +157,32 @@ function mountRegister() {
         inviteCode: f.get('inviteCode')
       })
       document.getElementById('msg')!.textContent = data.message
+      toast('Account created. Await approval from council.', 'success')
     } catch (err: any) {
       document.getElementById('msg')!.textContent = err.message
+      toast('Registration failed.', 'error')
     }
   })
 }
 
 function mountForgotPassword() {
-  app.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-6">
-      <div class="medieval-card w-full max-w-md">
-        <h1 class="text-2xl font-bold mb-4">Reset Password</h1>
-        <form id="forgotForm" class="space-y-3">
-          <input class="input-field" name="email" type="email" placeholder="Email" required />
-          <button class="btn-primary w-full" type="submit">Request reset token</button>
-        </form>
-        <form id="resetForm" class="space-y-3 mt-4">
-          <input class="input-field" name="token" placeholder="Reset Token" required />
-          <input class="input-field" name="newPassword" type="password" placeholder="New Password" required />
-          <button class="btn-primary w-full" type="submit">Apply new password</button>
-        </form>
-        <a href="#login" class="text-amber-100 text-sm block mt-4">Back to login</a>
-        <p id="msg" class="mt-3 text-sm"></p>
-      </div>
-    </div>`
+  app.innerHTML = authScaffold(
+    'Recover Access',
+    'Even seasoned warlords forget passphrases. Request a sacred reset token below.',
+    `
+      <form id="forgotForm" class="space-y-3">
+        <input class="input-field" name="email" type="email" placeholder="Raven Email" required />
+        <button class="btn btn-secondary w-full" type="submit">Request Reset Token</button>
+      </form>
+      <form id="resetForm" class="space-y-3 mt-4">
+        <input class="input-field" name="token" placeholder="Reset Token" required />
+        <input class="input-field" name="newPassword" type="password" placeholder="New Passphrase" required />
+        <button class="btn btn-primary w-full" type="submit">Apply New Passphrase</button>
+      </form>
+      <a href="#login" class="text-amber-200 text-sm block mt-4 hover:text-amber-100">Back to keep gate</a>
+      <p id="msg" class="mt-3 text-sm min-h-5"></p>
+    `
+  )
 
   document.getElementById('forgotForm')!.addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -143,8 +190,10 @@ function mountForgotPassword() {
     try {
       const data = await api('/api/auth/forgot-password', 'POST', { email: f.get('email') })
       document.getElementById('msg')!.textContent = `${data.message} Token (dev): ${data.resetToken || 'hidden'}`
+      toast('Reset token requested.', 'success')
     } catch (err: any) {
       document.getElementById('msg')!.textContent = err.message
+      toast('Could not request reset token.', 'error')
     }
   })
 
@@ -157,19 +206,26 @@ function mountForgotPassword() {
         newPassword: f.get('newPassword')
       })
       document.getElementById('msg')!.textContent = data.message
+      toast('Password reset complete.', 'success')
     } catch (err: any) {
       document.getElementById('msg')!.textContent = err.message
+      toast('Reset failed.', 'error')
     }
   })
 }
 
 function mountAwaitingApproval() {
   app.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-6">
-      <div class="medieval-card w-full max-w-md text-center">
-        <h1 class="text-2xl font-bold mb-3">Awaiting Council Approval</h1>
-        <p>Your account is registered but must be approved by an admin.</p>
-        <button id="logout" class="btn-primary mt-4">Logout</button>
+    <div class="min-h-screen flex items-center justify-center p-4 sm:p-6">
+      <div class="medieval-panel w-full max-w-md p-6 sm:p-8 text-center">
+        <h1 class="fantasy-title text-2xl sm:text-3xl font-semibold">Awaiting Council Approval</h1>
+        <div class="ornate-divider"></div>
+        <p class="text-amber-100/85">Your heraldry has been received. A realm admin must approve your account before you may command armies.</p>
+        <div class="my-5 text-amber-200/90 flex items-center justify-center gap-2">
+          <span>Review in progress</span>
+          <span class="loading-runes"><span></span><span></span><span></span></span>
+        </div>
+        <button id="logout" class="btn btn-danger mt-1">Leave the Hall</button>
       </div>
     </div>`
   document.getElementById('logout')!.addEventListener('click', () => {
@@ -183,16 +239,17 @@ function startPhaser(target: HTMLElement) {
   class GameScene extends Phaser.Scene {
     constructor() { super('GameScene') }
     create() {
-      this.add.text(20, 20, 'Phaser Canvas Placeholder - Map coming in Phase 2', { color: '#e7d9b5' })
+      this.add.text(24, 24, 'Phaser Canvas Placeholder — Map & villages arrive in Phase 2', { color: '#e7d9b5' })
+      this.add.text(24, 58, 'Gather wood, stone, and iron to forge your empire.', { color: '#c9b88f' })
     }
   }
 
   new Phaser.Game({
     type: Phaser.AUTO,
-    width: 800,
-    height: 400,
+    width: 900,
+    height: 420,
     parent: target,
-    backgroundColor: '#1A2A1F',
+    backgroundColor: '#162118',
     scene: [GameScene]
   })
 }
@@ -212,43 +269,79 @@ async function mountGameShell() {
     const shell = await api('/api/game/shell')
 
     const adminPanel = auth.isAdmin ? `
-      <section class="medieval-card mt-4">
-        <h3 class="font-semibold mb-2">Admin - Pending Approvals</h3>
+      <section class="medieval-panel mt-4 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="fantasy-title text-lg font-semibold">Admin — Pending Oaths</h3>
+          <span class="status-badge badge-admin">Admin</span>
+        </div>
         <div id="pending-users" class="space-y-2 text-sm"></div>
       </section>` : ''
 
     app.innerHTML = `
-      <div class="min-h-screen grid grid-cols-[250px_1fr] grid-rows-[64px_1fr]">
-        <header class="col-span-2 bg-zinc-800 border-b border-amber-700 flex items-center justify-between px-6">
-          <h1 class="font-bold">Tribal Wars Clone</h1>
-          <div class="flex items-center gap-4">
-            <span>${auth.email}</span>
-            <button id="logout" class="btn-primary">Logout</button>
+      <div class="min-h-screen grid shell-grid grid-cols-[270px_1fr] grid-rows-[72px_1fr_auto]">
+        <header class="col-span-2 medieval-panel rounded-none border-x-0 border-t-0 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div>
+            <h1 class="fantasy-title text-xl sm:text-2xl font-semibold">Tribal Wars Clone</h1>
+            <p class="text-xs text-amber-100/70">Medieval strategy • browser realm</p>
+          </div>
+          <div class="flex items-center gap-2 sm:gap-3 text-sm">
+            <span class="hidden sm:inline text-amber-100/85">${auth.email}</span>
+            ${auth.isAdmin ? '<span class="status-badge badge-admin">Admin</span>' : ''}
+            <span class="status-badge badge-approved">Approved</span>
+            <button id="logout" class="btn btn-danger">Logout</button>
           </div>
         </header>
-        <aside class="bg-emerald-950 border-r border-amber-700 p-4">
-          <h2 class="font-semibold mb-2">Villages</h2>
-          <ul class="space-y-2">${shell.villages.map((v:any)=>`<li class='p-2 bg-zinc-800 rounded'>${v.name}</li>`).join('')}</ul>
-          <div class="mt-6 text-sm text-zinc-400">Sidebar placeholders: buildings, army, market</div>
+
+        <aside class="shell-sidebar px-4 py-4 border-r border-amber-700/40 bg-emerald-950/20">
+          <div class="medieval-panel p-4">
+            <h2 class="fantasy-title text-lg mb-2">Villages</h2>
+            <ul class="space-y-2 mb-4">${shell.villages.map((v: any, i: number) => `
+              <li class='nav-item'>
+                <span>${v.name}</span>
+                ${i === 0 ? '<span class="status-badge badge-approved">Home</span>' : ''}
+              </li>`).join('')}</ul>
+            <h3 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Navigation</h3>
+            <div class="space-y-2 text-sm">
+              <div class="nav-item"><span>🏰 Buildings</span><span class="text-amber-200/80">Soon</span></div>
+              <div class="nav-item"><span>⚔️ Barracks</span><span class="text-amber-200/80">Soon</span></div>
+              <div class="nav-item"><span>🛒 Market</span><span class="text-amber-200/80">Soon</span></div>
+              <div class="nav-item"><span>🗺️ World Map</span><span class="text-amber-200/80">Soon</span></div>
+            </div>
+          </div>
         </aside>
-        <main class="p-4">
-          <div id="phaser-root" class="medieval-card"></div>
+
+        <main class="p-4 sm:p-5">
+          <section class="medieval-panel p-4 sm:p-5">
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <h2 class="fantasy-title text-lg sm:text-xl">War Room</h2>
+              <span class="status-badge badge-awaiting">Phase 2 in progress</span>
+            </div>
+            <div id="phaser-root" class="canvas-shell"></div>
+          </section>
           ${adminPanel}
         </main>
-      </div>`
 
+        <footer class="col-span-2 px-4 sm:px-6 py-3 text-xs text-amber-100/70 border-t border-amber-700/30 bg-black/15">
+          Realm uptime stable • Tick loop pending • Crafted with Tailwind & Phaser
+        </footer>
+      </div>`
 
     if (auth.isAdmin) {
       const pending = await api('/api/admin/pending-users')
       const host = document.getElementById('pending-users')!
       if (!pending.length) {
-        host.innerHTML = '<div class="text-zinc-400">No pending users.</div>'
+        host.innerHTML = '<div class="text-amber-100/70">No pending users. The realm is in order.</div>'
       } else {
-        host.innerHTML = pending.map((u:any) => `<div class="flex items-center justify-between bg-zinc-900 p-2 rounded"><span>${u.email}</span><button class="btn-primary approve-btn" data-id="${u.id}">Approve</button></div>`).join('')
+        host.innerHTML = pending.map((u: any) => `
+          <div class="flex items-center justify-between gap-2 bg-black/20 border border-amber-700/40 p-2 rounded-md">
+            <span>${u.email}</span>
+            <button class="btn btn-primary approve-btn" data-id="${u.id}">Approve</button>
+          </div>`).join('')
         host.querySelectorAll<HTMLButtonElement>('.approve-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
             await api(`/api/admin/users/${btn.dataset.id}/approval`, 'PATCH', { isApproved: true })
             btn.parentElement?.remove()
+            toast('User approved by council.', 'success')
           })
         })
       }
@@ -258,6 +351,7 @@ async function mountGameShell() {
       try { await api('/api/auth/logout', 'POST') } catch {}
       clearAuth()
       location.hash = '#login'
+      toast('Logged out of the realm.', 'info')
       route()
     })
 
@@ -265,6 +359,7 @@ async function mountGameShell() {
   } catch {
     clearAuth()
     location.hash = '#login'
+    toast('Session expired. Please log in again.', 'error')
     route()
   }
 }
