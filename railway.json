@@ -2,13 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "services": {
     "api": {
-      "rootDirectory": "api",
       "build": {
-        "builder": "NIXPACKS",
-        "nixpacksConfigPath": "../nixpacks.toml"
+        "builder": "RAILPACK"
       },
       "deploy": {
-        "startCommand": "./out/api",
         "healthcheckPath": "/swagger",
         "restartPolicyType": "ON_FAILURE",
         "restartPolicyMaxRetries": 10
@@ -17,10 +14,9 @@
     "client": {
       "rootDirectory": "client",
       "build": {
-        "builder": "NIXPACKS"
+        "builder": "RAILPACK"
       },
       "deploy": {
-        "startCommand": "nginx -g 'daemon off;'",
         "restartPolicyType": "ON_FAILURE",
         "restartPolicyMaxRetries": 10
       }
