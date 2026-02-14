@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Exe</OutputType>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
     <AssemblyName>App</AssemblyName>
     <RootNamespace>BrowserGame.Api</RootNamespace>
@@ -14,12 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ApiSourceFiles Include="api/**/*.cs" Exclude="api/**/bin/**;api/**/obj/**" />
-    <Compile Include="@(ApiSourceFiles)" />
+    <Compile Include="src/**/*.cs" Exclude="src/**/obj/**;src/**/bin/**" />
   </ItemGroup>
-  
+
   <ItemGroup>
-    <Content Include="api/**/appsettings*.json">
+    <Content Include="src/BrowserGame.Api/appsettings*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
