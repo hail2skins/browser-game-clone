@@ -86,11 +86,7 @@ if (Directory.Exists(clientDistPath))
 }
 else
 {
-    Console.WriteLine($"WARNING: client/dist not found. Checked paths:");
-    foreach (var path in possiblePaths)
-    {
-        Console.WriteLine($"  - {path}");
-    }
+    Console.WriteLine($"WARNING: client/dist not found at {clientDistPath}");
 }
 
 // Swagger in all environments
