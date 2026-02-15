@@ -1,6 +1,8 @@
 # Node
 node_modules/
-client/dist/
+# Keep production frontend build in repo so Railway can serve it
+!client/dist/
+!client/dist/**
 
 # .NET
 **/bin/

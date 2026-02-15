@@ -66,27 +66,38 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Serve built frontend from client/dist at root
-var clientDistPath = Path.Combine(AppContext.BaseDirectory, "client", "dist");
+var possibleClientDistPaths = new[]
+{
+    Path.Combine(AppContext.BaseDirectory, "client", "dist"),
+    Path.Combine(app.Environment.ContentRootPath, "client", "dist"),
+    Path.Combine(Directory.GetCurrentDirectory(), "client", "dist")
+}.Distinct().ToArray();
+
 Console.WriteLine($"ContentRootPath: {app.Environment.ContentRootPath}");
 Console.WriteLine($"BaseDirectory: {AppContext.BaseDirectory}");
-Console.WriteLine($"Looking for client/dist at: {clientDistPath}");
-Console.WriteLine($"Directory exists: {Directory.Exists(clientDistPath)}");
+Console.WriteLine($"CurrentDirectory: {Directory.GetCurrentDirectory()}");
 
-if (Directory.Exists(clientDistPath))
+var clientDistPath = possibleClientDistPaths.FirstOrDefault(Directory.Exists);
+foreach (var path in possibleClientDistPaths)
+{
+    Console.WriteLine($"Checking client/dist at: {path} (exists: {Directory.Exists(path)})");
+}
+
+if (clientDistPath is not null)
 {
     Console.WriteLine($"Serving static files from: {clientDistPath}");
-    Console.WriteLine($"Files: {string.Join(", ", Directory.GetFiles(clientDistPath).Select(Path.GetFileName))}");
-    
-    app.UseDefaultFiles();
-    app.UseStaticFiles(new StaticFileOptions
+    var clientDistProvider = new PhysicalFileProvider(clientDistPath);
+
+    app.UseFileServer(new FileServerOptions
     {
-        FileProvider = new PhysicalFileProvider(clientDistPath),
-        RequestPath = ""
+        FileProvider = clientDistProvider,
+        RequestPath = "",
+        EnableDefaultFiles = true
     });
 }
 else
 {
-    Console.WriteLine($"WARNING: client/dist not found at {clientDistPath}");
+    Console.WriteLine("WARNING: client/dist not found in any expected location.");
 }
 
 // Swagger in all environments
@@ -98,6 +109,25 @@ app.UseCors("client");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// SPA fallback for client-side routes (preserve /api and /swagger)
+if (clientDistPath is not null)
+{
+    app.MapFallback(async context =>
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+
+        if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        context.Response.ContentType = "text/html";
+        await context.Response.SendFileAsync(Path.Combine(clientDistPath, "index.html"));
+    });
+}
 
 // Retry database connection
 using (var scope = app.Services.CreateScope())
