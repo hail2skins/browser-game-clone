@@ -17,4 +17,5 @@ WORKDIR /app
 COPY --from=dotnet-builder /app/out ./
 COPY --from=node-builder /app/client/dist ./client/dist
 EXPOSE 8080
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 ENTRYPOINT ["./App"]
