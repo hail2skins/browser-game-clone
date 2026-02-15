@@ -18,15 +18,16 @@
     <Compile Include="src/**/*.cs" Exclude="src/**/obj/**;src/**/bin/**" />
   </ItemGroup>
 
-  <!-- Include config files + built frontend assets -->
+  <!-- Include config files -->
   <ItemGroup>
     <Content Include="src/BrowserGame.Api/appsettings*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="client/dist/**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+  </ItemGroup>
+
+  <!-- Include built frontend assets -->
+  <ItemGroup>
+    <Content Include="client/dist/**/*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- All package references -->

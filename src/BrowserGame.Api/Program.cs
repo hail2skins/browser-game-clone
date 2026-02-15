@@ -66,37 +66,22 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Serve built frontend from client/dist at root
-// Try multiple possible locations for different environments
-var possiblePaths = new[]
-{
-    Path.Combine(app.Environment.ContentRootPath, "client", "dist"),                    // Published: /app/client/dist
-    Path.Combine(AppContext.BaseDirectory, "client", "dist"),                           // Alternative: same as ContentRootPath
-    Path.Combine(Directory.GetCurrentDirectory(), "client", "dist"),                    // Current directory
-};
+var clientDistPath = Path.Combine(AppContext.BaseDirectory, "client", "dist");
+Console.WriteLine($"ContentRootPath: {app.Environment.ContentRootPath}");
+Console.WriteLine($"BaseDirectory: {AppContext.BaseDirectory}");
+Console.WriteLine($"Looking for client/dist at: {clientDistPath}");
+Console.WriteLine($"Directory exists: {Directory.Exists(clientDistPath)}");
 
-var clientDistPath = possiblePaths.FirstOrDefault(Directory.Exists);
-
-if (clientDistPath != null)
+if (Directory.Exists(clientDistPath))
 {
     Console.WriteLine($"Serving static files from: {clientDistPath}");
-    var staticFileProvider = new PhysicalFileProvider(clientDistPath);
-
-    app.UseDefaultFiles(new DefaultFilesOptions
-    {
-        FileProvider = staticFileProvider,
-        DefaultFileNames = new List<string> { "index.html" }
-    });
-
+    Console.WriteLine($"Files: {string.Join(", ", Directory.GetFiles(clientDistPath).Select(Path.GetFileName))}");
+    
+    app.UseDefaultFiles();
     app.UseStaticFiles(new StaticFileOptions
     {
-        FileProvider = staticFileProvider,
+        FileProvider = new PhysicalFileProvider(clientDistPath),
         RequestPath = ""
-    });
-    
-    // SPA fallback for client-side routing
-    app.MapFallbackToFile("index.html", new StaticFileOptions
-    {
-        FileProvider = staticFileProvider
     });
 }
 else
