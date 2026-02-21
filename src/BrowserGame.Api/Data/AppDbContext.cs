@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<WorldTile> WorldTiles => Set<WorldTile>();
     public DbSet<TroopMovement> TroopMovements => Set<TroopMovement>();
+    public DbSet<BuildingQueueItem> BuildingQueueItems => Set<BuildingQueueItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,5 +64,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<TroopMovement>()
             .HasIndex(t => t.ArrivesAt);
+
+        modelBuilder.Entity<BuildingQueueItem>()
+            .HasOne(q => q.Village)
+            .WithMany()
+            .HasForeignKey(q => q.VillageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<BuildingQueueItem>()
+            .HasIndex(q => new { q.VillageId, q.CompletesAt });
     }
 }

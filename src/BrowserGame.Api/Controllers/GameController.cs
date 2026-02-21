@@ -38,7 +38,9 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         }
 
         await worldMapService.EnsureWorldTilesAsync(db, WorldSeed, WorldWidth, WorldHeight);
+        await EnsureBarbarianVillages();
         await ResolveDueMovements(now);
+        await ResolveDueBuildQueue(now);
 
         var visibleTiles = await worldMapService.GetVisibleChunkAsync(
             db,
@@ -53,6 +55,30 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             .Include(m => m.TargetVillage)
             .Where(m => m.Status == "outbound" && m.SourceVillage != null && m.SourceVillage.UserId == userId)
             .OrderBy(m => m.ArrivesAt)
+            .ToListAsync();
+
+        var villageIds = user.Villages.Select(v => v.Id).ToList();
+        var buildQueue = await db.BuildingQueueItems
+            .Where(q => q.CompletedAt == null && villageIds.Contains(q.VillageId))
+            .OrderBy(q => q.CompletesAt)
+            .ToListAsync();
+
+        var minX = chunkX * chunkSize;
+        var minY = chunkY * chunkSize;
+        var maxX = minX + chunkSize - 1;
+        var maxY = minY + chunkSize - 1;
+
+        var visibleOthers = await db.Villages
+            .Where(v => !villageIds.Contains(v.Id) &&
+                        v.X >= minX && v.X <= maxX &&
+                        v.Y >= minY && v.Y <= maxY)
+            .Select(v => new
+            {
+                v.Id,
+                v.Name,
+                v.X,
+                v.Y
+            })
             .ToListAsync();
 
         await db.SaveChangesAsync();
@@ -105,7 +131,15 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 m.UnitCount,
                 m.Mission,
                 m.ArrivesAt
-            })
+            }),
+            buildQueue = buildQueue.Select(q => new
+            {
+                q.Id,
+                q.VillageId,
+                q.BuildingType,
+                q.CompletesAt
+            }),
+            visibleVillages = visibleOthers
         });
     }
 
@@ -140,6 +174,35 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             village.IronMineLevel,
             village.WarehouseLevel
         });
+    }
+
+    [HttpPost("villages/{villageId:guid}/buildings/{buildingType}/queue")]
+    public async Task<IActionResult> QueueBuildingUpgrade(Guid villageId, string buildingType)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        if (!Enum.TryParse<BuildingType>(buildingType, ignoreCase: true, out var parsedBuildingType))
+            return BadRequest("Unknown building type.");
+
+        var village = await db.Villages.FirstOrDefaultAsync(v => v.Id == villageId && v.UserId == userId);
+        if (village is null)
+            return NotFound();
+
+        var queueDepth = await db.BuildingQueueItems.CountAsync(q => q.VillageId == villageId && q.CompletedAt == null);
+        var success = worldService.TryQueueBuildingUpgrade(village, parsedBuildingType, DateTime.UtcNow, queueDepth, out var completesAt);
+        if (!success)
+            return BadRequest("Not enough resources for this upgrade.");
+
+        db.BuildingQueueItems.Add(new BuildingQueueItem
+        {
+            VillageId = villageId,
+            BuildingType = parsedBuildingType.ToString(),
+            CompletesAt = completesAt
+        });
+
+        await db.SaveChangesAsync();
+        return Ok(new { villageId, buildingType = parsedBuildingType.ToString(), completesAt });
     }
 
     [HttpPost("villages/{villageId:guid}/recruit")]
@@ -261,6 +324,28 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         }
     }
 
+    private async Task ResolveDueBuildQueue(DateTime now)
+    {
+        var due = await db.BuildingQueueItems
+            .Include(q => q.Village)
+            .Where(q => q.CompletedAt == null && q.CompletesAt <= now)
+            .OrderBy(q => q.CompletesAt)
+            .ToListAsync();
+
+        foreach (var queued in due)
+        {
+            if (queued.Village is null ||
+                !Enum.TryParse<BuildingType>(queued.BuildingType, true, out var buildingType))
+            {
+                queued.CompletedAt = now;
+                continue;
+            }
+
+            worldService.CompleteQueuedBuildingUpgrade(queued.Village, buildingType);
+            queued.CompletedAt = now;
+        }
+    }
+
     private static bool TryRemoveUnits(Village village, UnitType unitType, int count)
     {
         switch (unitType)
@@ -280,5 +365,43 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
     {
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(userIdClaim, out userId);
+    }
+
+    private async Task EnsureBarbarianVillages()
+    {
+        if (await db.Users.AnyAsync(u => u.Email == "barbarian@realm.local"))
+            return;
+
+        var barbarian = new User
+        {
+            Email = "barbarian@realm.local",
+            PasswordHash = "barbarian",
+            IsApproved = true,
+            IsAdmin = false
+        };
+        db.Users.Add(barbarian);
+        await db.SaveChangesAsync();
+
+        var rng = new Random(777);
+        var villages = new List<Village>();
+        for (var i = 0; i < 14; i++)
+        {
+            villages.Add(new Village
+            {
+                UserId = barbarian.Id,
+                Name = $"Barbarian Camp {i + 1}",
+                LocationPlaceholder = "NPC",
+                X = rng.Next(0, WorldWidth),
+                Y = rng.Next(0, WorldHeight),
+                Wood = 700,
+                Clay = 700,
+                Iron = 700,
+                Spearmen = rng.Next(5, 25),
+                Swordsmen = rng.Next(0, 10)
+            });
+        }
+
+        db.Villages.AddRange(villages);
+        await db.SaveChangesAsync();
     }
 }

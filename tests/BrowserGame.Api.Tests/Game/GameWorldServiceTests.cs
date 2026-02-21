@@ -109,6 +109,63 @@ public class GameWorldServiceTests
         Assert.Equal(1, village.TimberCampLevel);
     }
 
+    [Fact]
+    public void QueueBuildingUpgrade_WhenAffordable_CreatesTimedQueueEntry()
+    {
+        var sut = new GameWorldService();
+        var now = new DateTime(2026, 2, 21, 12, 0, 0, DateTimeKind.Utc);
+        var village = new Village
+        {
+            Wood = 1000,
+            Clay = 1000,
+            Iron = 1000,
+            TimberCampLevel = 1
+        };
+
+        var queued = sut.TryQueueBuildingUpgrade(village, BuildingType.TimberCamp, now, queueDepth: 0, out var completesAt);
+
+        Assert.True(queued);
+        Assert.True(completesAt > now);
+        Assert.True(village.Wood < 1000);
+        Assert.True(village.Clay < 1000);
+        Assert.True(village.Iron < 1000);
+    }
+
+    [Fact]
+    public void QueueBuildingUpgrade_WithQueueDepth_IncreasesCompletionTime()
+    {
+        var sut = new GameWorldService();
+        var now = new DateTime(2026, 2, 21, 12, 0, 0, DateTimeKind.Utc);
+        var village = new Village
+        {
+            Wood = 5000,
+            Clay = 5000,
+            Iron = 5000,
+            TimberCampLevel = 1
+        };
+
+        var firstQueued = sut.TryQueueBuildingUpgrade(village, BuildingType.TimberCamp, now, queueDepth: 0, out var firstCompletesAt);
+        var secondQueued = sut.TryQueueBuildingUpgrade(village, BuildingType.ClayPit, now, queueDepth: 1, out var secondCompletesAt);
+
+        Assert.True(firstQueued);
+        Assert.True(secondQueued);
+        Assert.True(secondCompletesAt > firstCompletesAt);
+    }
+
+    [Fact]
+    public void CompleteQueuedBuildingUpgrade_IncrementsBuildingLevel()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            TimberCampLevel = 1
+        };
+
+        sut.CompleteQueuedBuildingUpgrade(village, BuildingType.TimberCamp);
+
+        Assert.Equal(2, village.TimberCampLevel);
+    }
+
     private static double Distance((int X, int Y) first, (int X, int Y) second)
     {
         var dx = first.X - second.X;

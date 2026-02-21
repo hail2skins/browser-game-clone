@@ -172,6 +172,44 @@ public class GameWorldService
         return true;
     }
 
+    public bool TryQueueBuildingUpgrade(
+        Village village,
+        BuildingType buildingType,
+        DateTime nowUtc,
+        int queueDepth,
+        out DateTime completesAtUtc)
+    {
+        completesAtUtc = nowUtc;
+        TickResources(village, nowUtc);
+
+        var currentLevel = GetLevel(village, buildingType);
+        var nextLevel = currentLevel + 1;
+
+        var woodCost = Cost(baseValue: 80, nextLevel);
+        var clayCost = Cost(baseValue: 70, nextLevel);
+        var ironCost = Cost(baseValue: 60, nextLevel);
+
+        if (village.Wood < woodCost || village.Clay < clayCost || village.Iron < ironCost)
+        {
+            return false;
+        }
+
+        village.Wood -= woodCost;
+        village.Clay -= clayCost;
+        village.Iron -= ironCost;
+
+        var baseMinutes = 2 + (nextLevel * 2);
+        var queuePenaltyMinutes = Math.Max(0, queueDepth) * 2;
+        completesAtUtc = nowUtc.AddMinutes(baseMinutes + queuePenaltyMinutes);
+        return true;
+    }
+
+    public void CompleteQueuedBuildingUpgrade(Village village, BuildingType buildingType)
+    {
+        var level = GetLevel(village, buildingType);
+        SetLevel(village, buildingType, level + 1);
+    }
+
     private static int Produce(int level, double elapsedSeconds)
     {
         var perHour = 35 + (level * 20);

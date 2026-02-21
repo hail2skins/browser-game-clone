@@ -277,6 +277,18 @@ type GameShell = {
     mission: string
     arrivesAt: string
   }[]
+  buildQueue: {
+    id: string
+    villageId: string
+    buildingType: string
+    completesAt: string
+  }[]
+  visibleVillages: {
+    id: string
+    name: string
+    x: number
+    y: number
+  }[]
 }
 
 function startPhaser(
@@ -290,27 +302,30 @@ function startPhaser(
 
     create() {
       const terrainColor: Record<TileTerrain, number> = {
-        plains: 0x334f2a,
-        forest: 0x1f5b2a,
-        hills: 0x605438,
-        water: 0x1b3d5f
+        plains: 0x5d8a45,
+        forest: 0x2e6b3a,
+        hills: 0x8b7b57,
+        water: 0x2d63a4
       }
 
-      const tileSize = 6
+      const tileSize = 20
       const offsetX = 16
       const offsetY = 16
       const chunkOffsetX = shell.world.chunkX * shell.world.chunkSize
       const chunkOffsetY = shell.world.chunkY * shell.world.chunkSize
 
+      this.add.rectangle(176, 176, 352, 352, 0x0f1b12).setStrokeStyle(2, 0x9b6d2f, 0.7)
+
       shell.world.tiles.forEach((tile) => {
         const color = terrainColor[tile.terrain] ?? 0x334f2a
-        this.add.rectangle(
+        const tileRect = this.add.rectangle(
           offsetX + ((tile.x - chunkOffsetX) * tileSize) + (tileSize / 2),
           offsetY + ((tile.y - chunkOffsetY) * tileSize) + (tileSize / 2),
           tileSize,
           tileSize,
           color
-        ).setAlpha(0.9)
+        ).setAlpha(0.96)
+        tileRect.setStrokeStyle(1, 0x0c130e, 0.35)
       })
 
       shell.villages.forEach((village) => {
@@ -318,16 +333,26 @@ function startPhaser(
         const marker = this.add.circle(
           offsetX + ((village.x - chunkOffsetX) * tileSize) + (tileSize / 2),
           offsetY + ((village.y - chunkOffsetY) * tileSize) + (tileSize / 2),
-          selected ? 5 : 4,
+          selected ? 8 : 6,
           selected ? 0xffd166 : 0xe6e6e6
         )
         marker.setInteractive({ useHandCursor: true })
         marker.on('pointerdown', () => onVillageSelected(village.id))
       })
 
-      this.add.text(430, 14, 'World Map', { color: '#f2e4bf', fontSize: '16px' })
-      this.add.text(430, 38, `Villages: ${shell.villages.length}`, { color: '#c9b88f', fontSize: '12px' })
-      this.add.text(430, 58, 'Click village markers', { color: '#c9b88f', fontSize: '12px' })
+      shell.visibleVillages.forEach((village) => {
+        this.add.circle(
+          offsetX + ((village.x - chunkOffsetX) * tileSize) + (tileSize / 2),
+          offsetY + ((village.y - chunkOffsetY) * tileSize) + (tileSize / 2),
+          5,
+          0xe15656
+        )
+      })
+
+      this.add.text(390, 14, 'World Map (Chunked)', { color: '#f2e4bf', fontSize: '16px' })
+      this.add.text(390, 38, `Your villages: ${shell.villages.length}`, { color: '#c9b88f', fontSize: '12px' })
+      this.add.text(390, 58, `Visible enemies: ${shell.visibleVillages.length}`, { color: '#d29a9a', fontSize: '12px' })
+      this.add.text(390, 78, 'Yellow = You, Red = Targets', { color: '#c9b88f', fontSize: '12px' })
     }
   }
 
@@ -422,6 +447,10 @@ async function mountGameShell() {
             <h3 class="fantasy-title text-lg font-semibold mb-3">Army Movements</h3>
             <div id="movement-list"></div>
           </section>
+          <section class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Build Queue</h3>
+            <div id="build-queue-list"></div>
+          </section>
           ${adminPanel}
         </main>
 
@@ -461,6 +490,7 @@ async function mountGameShell() {
 
     const villageDetailsHost = document.getElementById('village-details')!
     const movementListHost = document.getElementById('movement-list')!
+    const buildQueueHost = document.getElementById('build-queue-list')!
     const phaserRoot = document.getElementById('phaser-root')!
     let phaserGame: Phaser.Game | null = null
 
@@ -486,22 +516,22 @@ async function mountGameShell() {
           <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Swordsman">Recruit Swordsman</button>
         </div>
         <div class="space-y-2">
-          <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="MainBuilding">Upgrade</button></div>
-          <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="TimberCamp">Upgrade</button></div>
-          <div class="nav-item"><span>Clay Pit (Lv ${selected.buildings.clayPit})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="ClayPit">Upgrade</button></div>
-          <div class="nav-item"><span>Iron Mine (Lv ${selected.buildings.ironMine})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="IronMine">Upgrade</button></div>
-          <div class="nav-item"><span>Warehouse (Lv ${selected.buildings.warehouse})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="Warehouse">Upgrade</button></div>
+          <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="MainBuilding">Queue</button></div>
+          <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="TimberCamp">Queue</button></div>
+          <div class="nav-item"><span>Clay Pit (Lv ${selected.buildings.clayPit})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="ClayPit">Queue</button></div>
+          <div class="nav-item"><span>Iron Mine (Lv ${selected.buildings.ironMine})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="IronMine">Queue</button></div>
+          <div class="nav-item"><span>Warehouse (Lv ${selected.buildings.warehouse})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="Warehouse">Queue</button></div>
         </div>`
 
-      villageDetailsHost.querySelectorAll<HTMLButtonElement>('.upgrade-btn').forEach((btn) => {
+      villageDetailsHost.querySelectorAll<HTMLButtonElement>('.queue-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
           btn.disabled = true
           try {
-            await api(`/api/game/villages/${btn.dataset.villageId}/buildings/${btn.dataset.building}/upgrade`, 'POST')
-            toast('Upgrade complete.', 'success')
+            await api(`/api/game/villages/${btn.dataset.villageId}/buildings/${btn.dataset.building}/queue`, 'POST')
+            toast('Upgrade queued.', 'success')
             await mountGameShell()
           } catch (err: any) {
-            toast(err.message || 'Upgrade failed', 'error')
+            toast(err.message || 'Queue failed', 'error')
           } finally {
             btn.disabled = false
           }
@@ -525,6 +555,35 @@ async function mountGameShell() {
           }
         })
       })
+
+      if (shell.visibleVillages.length) {
+        villageDetailsHost.innerHTML += `
+          <div class="mt-4">
+            <h4 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Attack Target</h4>
+            <div class="flex gap-2">
+              <select id="attack-target" class="input-field">
+                ${shell.visibleVillages.map(v => `<option value="${v.id}">${v.name} (${v.x}|${v.y})</option>`).join('')}
+              </select>
+              <button id="send-attack" class="btn btn-danger">Send 5 Spearmen</button>
+            </div>
+          </div>`
+
+        document.getElementById('send-attack')?.addEventListener('click', async () => {
+          const targetVillageId = (document.getElementById('attack-target') as HTMLSelectElement).value
+          try {
+            await api('/api/game/movements/attack', 'POST', {
+              sourceVillageId: selected.id,
+              targetVillageId,
+              unitType: 'Spearman',
+              unitCount: 5
+            })
+            toast('Attack launched.', 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Attack failed', 'error')
+          }
+        })
+      }
     }
 
     function renderMovements() {
@@ -537,6 +596,20 @@ async function mountGameShell() {
         <div class="nav-item mb-2 text-sm">
           <span>${m.unitCount} ${m.unitType} → ${m.mission}</span>
           <span>${new Date(m.arrivesAt).toLocaleTimeString()}</span>
+        </div>
+      `).join('')
+    }
+
+    function renderBuildQueue() {
+      if (!shell.buildQueue.length) {
+        buildQueueHost.innerHTML = '<div class="text-amber-100/80 text-sm">Queue empty.</div>'
+        return
+      }
+
+      buildQueueHost.innerHTML = shell.buildQueue.map((q) => `
+        <div class="nav-item mb-2 text-sm">
+          <span>${q.buildingType}</span>
+          <span>${new Date(q.completesAt).toLocaleTimeString()}</span>
         </div>
       `).join('')
     }
@@ -569,6 +642,7 @@ async function mountGameShell() {
       renderVillageDetails()
       renderMap()
       renderMovements()
+      renderBuildQueue()
     }
 
     document.getElementById('chunk-left')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX - 1, 3); await reloadShell() })
@@ -579,6 +653,7 @@ async function mountGameShell() {
     renderVillageDetails()
     renderMap()
     renderMovements()
+    renderBuildQueue()
   } catch {
     clearAuth()
     location.hash = '#login'
