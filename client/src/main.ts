@@ -235,16 +235,83 @@ function mountAwaitingApproval() {
   })
 }
 
-function startPhaser(target: HTMLElement) {
+type TileTerrain = 'plains' | 'forest' | 'hills' | 'water'
+
+type GameShell = {
+  world: {
+    width: number
+    height: number
+    tiles: { x: number; y: number; terrain: TileTerrain }[]
+  }
+  villages: {
+    id: string
+    name: string
+    x: number
+    y: number
+    wood: number
+    clay: number
+    iron: number
+    buildings: {
+      main: number
+      timberCamp: number
+      clayPit: number
+      ironMine: number
+      warehouse: number
+    }
+  }[]
+}
+
+function startPhaser(
+  target: HTMLElement,
+  shell: GameShell,
+  selectedVillageId: string | null,
+  onVillageSelected: (villageId: string) => void
+) {
   class GameScene extends Phaser.Scene {
     constructor() { super('GameScene') }
+
     create() {
-      this.add.text(24, 24, 'Phaser Canvas Placeholder — Map & villages arrive in Phase 2', { color: '#e7d9b5' })
-      this.add.text(24, 58, 'Gather wood, stone, and iron to forge your empire.', { color: '#c9b88f' })
+      const terrainColor: Record<TileTerrain, number> = {
+        plains: 0x334f2a,
+        forest: 0x1f5b2a,
+        hills: 0x605438,
+        water: 0x1b3d5f
+      }
+
+      const tileSize = 6
+      const offsetX = 16
+      const offsetY = 16
+
+      shell.world.tiles.forEach((tile) => {
+        const color = terrainColor[tile.terrain] ?? 0x334f2a
+        this.add.rectangle(
+          offsetX + (tile.x * tileSize) + (tileSize / 2),
+          offsetY + (tile.y * tileSize) + (tileSize / 2),
+          tileSize,
+          tileSize,
+          color
+        ).setAlpha(0.9)
+      })
+
+      shell.villages.forEach((village) => {
+        const selected = village.id === selectedVillageId
+        const marker = this.add.circle(
+          offsetX + (village.x * tileSize) + (tileSize / 2),
+          offsetY + (village.y * tileSize) + (tileSize / 2),
+          selected ? 5 : 4,
+          selected ? 0xffd166 : 0xe6e6e6
+        )
+        marker.setInteractive({ useHandCursor: true })
+        marker.on('pointerdown', () => onVillageSelected(village.id))
+      })
+
+      this.add.text(430, 14, 'World Map', { color: '#f2e4bf', fontSize: '16px' })
+      this.add.text(430, 38, `Villages: ${shell.villages.length}`, { color: '#c9b88f', fontSize: '12px' })
+      this.add.text(430, 58, 'Click village markers', { color: '#c9b88f', fontSize: '12px' })
     }
   }
 
-  new Phaser.Game({
+  return new Phaser.Game({
     type: Phaser.AUTO,
     width: 900,
     height: 420,
@@ -266,7 +333,8 @@ async function mountGameShell() {
       return
     }
 
-    const shell = await api('/api/game/shell')
+    const shell = await api('/api/game/shell') as GameShell
+    let selectedVillageId = shell.villages[0]?.id ?? null
 
     const adminPanel = auth.isAdmin ? `
       <section class="medieval-panel mt-4 p-4">
@@ -296,7 +364,7 @@ async function mountGameShell() {
           <div class="medieval-panel p-4">
             <h2 class="fantasy-title text-lg mb-2">Villages</h2>
             <ul class="space-y-2 mb-4">${shell.villages.map((v: any, i: number) => `
-              <li class='nav-item'>
+              <li class='nav-item village-select' data-village-id="${v.id}">
                 <span>${v.name}</span>
                 ${i === 0 ? '<span class="status-badge badge-approved">Home</span>' : ''}
               </li>`).join('')}</ul>
@@ -314,15 +382,19 @@ async function mountGameShell() {
           <section class="medieval-panel p-4 sm:p-5">
             <div class="flex items-center justify-between gap-2 mb-3">
               <h2 class="fantasy-title text-lg sm:text-xl">War Room</h2>
-              <span class="status-badge badge-awaiting">Phase 2 in progress</span>
+              <span class="status-badge badge-approved">Live Tick Enabled</span>
             </div>
             <div id="phaser-root" class="canvas-shell"></div>
+          </section>
+          <section class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Village Management</h3>
+            <div id="village-details"></div>
           </section>
           ${adminPanel}
         </main>
 
         <footer class="col-span-2 px-4 sm:px-6 py-3 text-xs text-amber-100/70 border-t border-amber-700/30 bg-black/15">
-          Realm uptime stable • Tick loop pending • Crafted with Tailwind & Phaser
+          Realm uptime stable • Resource tick active • Crafted with Tailwind & Phaser
         </footer>
       </div>`
 
@@ -355,7 +427,69 @@ async function mountGameShell() {
       route()
     })
 
-    startPhaser(document.getElementById('phaser-root')!)
+    const villageDetailsHost = document.getElementById('village-details')!
+    const phaserRoot = document.getElementById('phaser-root')!
+    let phaserGame: Phaser.Game | null = null
+
+    function renderVillageDetails() {
+      const selected = shell.villages.find(v => v.id === selectedVillageId) ?? shell.villages[0]
+      if (!selected) {
+        villageDetailsHost.innerHTML = '<p class="text-amber-100/80">No villages found.</p>'
+        return
+      }
+
+      villageDetailsHost.innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm mb-4">
+          <div class="nav-item"><span>Wood</span><span>${selected.wood}</span></div>
+          <div class="nav-item"><span>Clay</span><span>${selected.clay}</span></div>
+          <div class="nav-item"><span>Iron</span><span>${selected.iron}</span></div>
+        </div>
+        <div class="space-y-2">
+          <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="MainBuilding">Upgrade</button></div>
+          <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="TimberCamp">Upgrade</button></div>
+          <div class="nav-item"><span>Clay Pit (Lv ${selected.buildings.clayPit})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="ClayPit">Upgrade</button></div>
+          <div class="nav-item"><span>Iron Mine (Lv ${selected.buildings.ironMine})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="IronMine">Upgrade</button></div>
+          <div class="nav-item"><span>Warehouse (Lv ${selected.buildings.warehouse})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="Warehouse">Upgrade</button></div>
+        </div>`
+
+      villageDetailsHost.querySelectorAll<HTMLButtonElement>('.upgrade-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true
+          try {
+            await api(`/api/game/villages/${btn.dataset.villageId}/buildings/${btn.dataset.building}/upgrade`, 'POST')
+            toast('Upgrade complete.', 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Upgrade failed', 'error')
+          } finally {
+            btn.disabled = false
+          }
+        })
+      })
+    }
+
+    function renderMap() {
+      if (phaserGame) {
+        phaserGame.destroy(true)
+      }
+
+      phaserGame = startPhaser(phaserRoot, shell, selectedVillageId, (villageId) => {
+        selectedVillageId = villageId
+        renderVillageDetails()
+        renderMap()
+      })
+    }
+
+    app.querySelectorAll<HTMLElement>('.village-select').forEach((item) => {
+      item.addEventListener('click', () => {
+        selectedVillageId = item.dataset.villageId ?? selectedVillageId
+        renderVillageDetails()
+        renderMap()
+      })
+    })
+
+    renderVillageDetails()
+    renderMap()
   } catch {
     clearAuth()
     location.hash = '#login'

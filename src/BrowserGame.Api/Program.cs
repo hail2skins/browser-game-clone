@@ -1,5 +1,6 @@
 using System.Text;
 using api.Data;
+using api.Game;
 using api.Services;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -31,6 +32,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<GameWorldService>();
 
 var jwt = builder.Configuration.GetSection("Jwt");
 var secret = jwt["Secret"] ?? "CHANGE_ME_SUPER_SECRET_KEY_32_CHARS_MIN";
@@ -70,7 +72,9 @@ var possibleClientDistPaths = new[]
 {
     Path.Combine(AppContext.BaseDirectory, "client", "dist"),
     Path.Combine(app.Environment.ContentRootPath, "client", "dist"),
-    Path.Combine(Directory.GetCurrentDirectory(), "client", "dist")
+    Path.Combine(Directory.GetCurrentDirectory(), "client", "dist"),
+    Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "..", "client", "dist")),
+    Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "client", "dist"))
 }.Distinct().ToArray();
 
 Console.WriteLine($"ContentRootPath: {app.Environment.ContentRootPath}");

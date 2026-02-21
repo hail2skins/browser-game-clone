@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using api.Data;
 using api.DTOs;
+using api.Game;
 using api.Models;
 using api.Services;
 using BCrypt.Net;
@@ -13,8 +14,12 @@ namespace api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(AppDbContext db, JwtService jwtService) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwtService, GameWorldService worldService) : ControllerBase
 {
+    private const int WorldWidth = 64;
+    private const int WorldHeight = 64;
+    private const int SpawnDistance = 6;
+
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
@@ -50,11 +55,17 @@ public class AuthController(AppDbContext db, JwtService jwtService) : Controller
         invite.UsedByUserId = user.Id;
         await db.SaveChangesAsync();
 
+        var existing = await db.Villages.ToListAsync();
+        var seed = email.GetHashCode(StringComparison.Ordinal);
+        var spawn = worldService.AssignStartingVillageLocation(existing, seed, WorldWidth, WorldHeight, SpawnDistance);
+
         db.Villages.Add(new Village
         {
             UserId = user.Id,
             Name = "Starter Hamlet",
-            LocationPlaceholder = "Map generation pending"
+            LocationPlaceholder = $"({spawn.X},{spawn.Y})",
+            X = spawn.X,
+            Y = spawn.Y
         });
 
         await db.SaveChangesAsync();

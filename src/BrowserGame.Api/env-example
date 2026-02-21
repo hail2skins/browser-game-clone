@@ -7,9 +7,9 @@
 # Option 2: Individual PostgreSQL variables
 PGHOST=localhost
 PGPORT=5432
-POSTGRES_DB=hamco_dev
-POSTGRES_USER=art
-POSTGRES_PASSWORD=
+PGDATABASE=browser_game
+PGUSER=art
+PGPASSWORD=
 
 # JWT Settings (generate a secure secret: openssl rand -base64 32)
 Jwt__Secret=CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_MIN_32_CHARS
