@@ -154,22 +154,42 @@ public class GameWorldService
 
         var currentLevel = GetLevel(village, buildingType);
         var nextLevel = currentLevel + 1;
+        var cost = GetUpgradeCost(village, buildingType);
 
-        var woodCost = Cost(baseValue: 80, nextLevel);
-        var clayCost = Cost(baseValue: 70, nextLevel);
-        var ironCost = Cost(baseValue: 60, nextLevel);
-
-        if (village.Wood < woodCost || village.Clay < clayCost || village.Iron < ironCost)
+        if (village.Wood < cost.Wood || village.Clay < cost.Clay || village.Iron < cost.Iron)
         {
             return false;
         }
 
-        village.Wood -= woodCost;
-        village.Clay -= clayCost;
-        village.Iron -= ironCost;
+        village.Wood -= cost.Wood;
+        village.Clay -= cost.Clay;
+        village.Iron -= cost.Iron;
 
         SetLevel(village, buildingType, nextLevel);
         return true;
+    }
+
+    public ResourceCost GetUpgradeCost(Village village, BuildingType buildingType)
+    {
+        var currentLevel = GetLevel(village, buildingType);
+        var nextLevel = currentLevel + 1;
+        return new ResourceCost(
+            Cost(baseValue: 80, nextLevel),
+            Cost(baseValue: 70, nextLevel),
+            Cost(baseValue: 60, nextLevel));
+    }
+
+    public ProductionRates GetProductionPerHour(Village village)
+    {
+        return new ProductionRates(
+            PerHour(village.TimberCampLevel),
+            PerHour(village.ClayPitLevel),
+            PerHour(village.IronMineLevel));
+    }
+
+    public int GetWarehouseCapacity(Village village)
+    {
+        return WarehouseCapacity(village.WarehouseLevel);
     }
 
     public bool TryQueueBuildingUpgrade(
@@ -184,19 +204,16 @@ public class GameWorldService
 
         var currentLevel = GetLevel(village, buildingType);
         var nextLevel = currentLevel + 1;
+        var cost = GetUpgradeCost(village, buildingType);
 
-        var woodCost = Cost(baseValue: 80, nextLevel);
-        var clayCost = Cost(baseValue: 70, nextLevel);
-        var ironCost = Cost(baseValue: 60, nextLevel);
-
-        if (village.Wood < woodCost || village.Clay < clayCost || village.Iron < ironCost)
+        if (village.Wood < cost.Wood || village.Clay < cost.Clay || village.Iron < cost.Iron)
         {
             return false;
         }
 
-        village.Wood -= woodCost;
-        village.Clay -= clayCost;
-        village.Iron -= ironCost;
+        village.Wood -= cost.Wood;
+        village.Clay -= cost.Clay;
+        village.Iron -= cost.Iron;
 
         var baseMinutes = 2 + (nextLevel * 2);
         var queuePenaltyMinutes = Math.Max(0, queueDepth) * 2;
@@ -212,8 +229,13 @@ public class GameWorldService
 
     private static int Produce(int level, double elapsedSeconds)
     {
-        var perHour = 35 + (level * 20);
+        var perHour = PerHour(level);
         return (int)Math.Floor((perHour / 3600d) * elapsedSeconds);
+    }
+
+    private static int PerHour(int level)
+    {
+        return 35 + (level * 20);
     }
 
     private static int WarehouseCapacity(int level)

@@ -112,6 +112,11 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                     spearmen = v.Spearmen,
                     swordsmen = v.Swordsmen
                 },
+                economy = new
+                {
+                    production = worldService.GetProductionPerHour(v),
+                    warehouseCapacity = worldService.GetWarehouseCapacity(v)
+                },
                 buildings = new
                 {
                     main = v.MainBuildingLevel,
@@ -119,6 +124,14 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                     clayPit = v.ClayPitLevel,
                     ironMine = v.IronMineLevel,
                     warehouse = v.WarehouseLevel
+                },
+                upgradeCosts = new
+                {
+                    main = worldService.GetUpgradeCost(v, BuildingType.MainBuilding),
+                    timberCamp = worldService.GetUpgradeCost(v, BuildingType.TimberCamp),
+                    clayPit = worldService.GetUpgradeCost(v, BuildingType.ClayPit),
+                    ironMine = worldService.GetUpgradeCost(v, BuildingType.IronMine),
+                    warehouse = worldService.GetUpgradeCost(v, BuildingType.Warehouse)
                 },
                 v.CreatedAt
             }),
