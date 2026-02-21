@@ -9,6 +9,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<Village> Villages => Set<Village>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<WorldTile> WorldTiles => Set<WorldTile>();
+    public DbSet<TroopMovement> TroopMovements => Set<TroopMovement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,5 +44,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<PasswordResetToken>().HasIndex(t => t.TokenHash);
+
+        modelBuilder.Entity<WorldTile>()
+            .HasIndex(t => new { t.X, t.Y })
+            .IsUnique();
+
+        modelBuilder.Entity<TroopMovement>()
+            .HasOne(t => t.SourceVillage)
+            .WithMany()
+            .HasForeignKey(t => t.SourceVillageId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<TroopMovement>()
+            .HasOne(t => t.TargetVillage)
+            .WithMany()
+            .HasForeignKey(t => t.TargetVillageId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<TroopMovement>()
+            .HasIndex(t => t.ArrivesAt);
     }
 }

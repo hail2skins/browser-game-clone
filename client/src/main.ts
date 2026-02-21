@@ -1,5 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
+import { clampChunk, getSelectedVillage } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -241,6 +242,10 @@ type GameShell = {
   world: {
     width: number
     height: number
+    chunkX: number
+    chunkY: number
+    chunkSize: number
+    fog: boolean
     tiles: { x: number; y: number; terrain: TileTerrain }[]
   }
   villages: {
@@ -251,6 +256,10 @@ type GameShell = {
     wood: number
     clay: number
     iron: number
+    troops: {
+      spearmen: number
+      swordsmen: number
+    }
     buildings: {
       main: number
       timberCamp: number
@@ -258,6 +267,15 @@ type GameShell = {
       ironMine: number
       warehouse: number
     }
+  }[]
+  movements: {
+    id: string
+    sourceVillageId: string
+    targetVillageId: string
+    unitType: string
+    unitCount: number
+    mission: string
+    arrivesAt: string
   }[]
 }
 
@@ -281,12 +299,14 @@ function startPhaser(
       const tileSize = 6
       const offsetX = 16
       const offsetY = 16
+      const chunkOffsetX = shell.world.chunkX * shell.world.chunkSize
+      const chunkOffsetY = shell.world.chunkY * shell.world.chunkSize
 
       shell.world.tiles.forEach((tile) => {
         const color = terrainColor[tile.terrain] ?? 0x334f2a
         this.add.rectangle(
-          offsetX + (tile.x * tileSize) + (tileSize / 2),
-          offsetY + (tile.y * tileSize) + (tileSize / 2),
+          offsetX + ((tile.x - chunkOffsetX) * tileSize) + (tileSize / 2),
+          offsetY + ((tile.y - chunkOffsetY) * tileSize) + (tileSize / 2),
           tileSize,
           tileSize,
           color
@@ -296,8 +316,8 @@ function startPhaser(
       shell.villages.forEach((village) => {
         const selected = village.id === selectedVillageId
         const marker = this.add.circle(
-          offsetX + (village.x * tileSize) + (tileSize / 2),
-          offsetY + (village.y * tileSize) + (tileSize / 2),
+          offsetX + ((village.x - chunkOffsetX) * tileSize) + (tileSize / 2),
+          offsetY + ((village.y - chunkOffsetY) * tileSize) + (tileSize / 2),
           selected ? 5 : 4,
           selected ? 0xffd166 : 0xe6e6e6
         )
@@ -323,6 +343,8 @@ function startPhaser(
 
 async function mountGameShell() {
   try {
+    let chunkX = 0
+    let chunkY = 0
     const me = await api('/api/auth/me')
     auth.isApproved = me.isApproved
     auth.isAdmin = me.isAdmin
@@ -333,7 +355,7 @@ async function mountGameShell() {
       return
     }
 
-    const shell = await api('/api/game/shell') as GameShell
+    let shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=16`) as GameShell
     let selectedVillageId = shell.villages[0]?.id ?? null
 
     const adminPanel = auth.isAdmin ? `
@@ -371,9 +393,9 @@ async function mountGameShell() {
             <h3 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Navigation</h3>
             <div class="space-y-2 text-sm">
               <div class="nav-item"><span>🏰 Buildings</span><span class="text-amber-200/80">Soon</span></div>
-              <div class="nav-item"><span>⚔️ Barracks</span><span class="text-amber-200/80">Soon</span></div>
+              <div class="nav-item"><span>⚔️ Barracks</span><span class="text-amber-200/80">Active</span></div>
               <div class="nav-item"><span>🛒 Market</span><span class="text-amber-200/80">Soon</span></div>
-              <div class="nav-item"><span>🗺️ World Map</span><span class="text-amber-200/80">Soon</span></div>
+              <div class="nav-item"><span>🗺️ World Map</span><span class="text-amber-200/80">Chunked</span></div>
             </div>
           </div>
         </aside>
@@ -384,11 +406,21 @@ async function mountGameShell() {
               <h2 class="fantasy-title text-lg sm:text-xl">War Room</h2>
               <span class="status-badge badge-approved">Live Tick Enabled</span>
             </div>
+            <div class="flex gap-2 mb-3">
+              <button id="chunk-left" class="btn btn-secondary">←</button>
+              <button id="chunk-up" class="btn btn-secondary">↑</button>
+              <button id="chunk-down" class="btn btn-secondary">↓</button>
+              <button id="chunk-right" class="btn btn-secondary">→</button>
+            </div>
             <div id="phaser-root" class="canvas-shell"></div>
           </section>
           <section class="medieval-panel mt-4 p-4">
             <h3 class="fantasy-title text-lg font-semibold mb-3">Village Management</h3>
             <div id="village-details"></div>
+          </section>
+          <section class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Army Movements</h3>
+            <div id="movement-list"></div>
           </section>
           ${adminPanel}
         </main>
@@ -428,11 +460,12 @@ async function mountGameShell() {
     })
 
     const villageDetailsHost = document.getElementById('village-details')!
+    const movementListHost = document.getElementById('movement-list')!
     const phaserRoot = document.getElementById('phaser-root')!
     let phaserGame: Phaser.Game | null = null
 
     function renderVillageDetails() {
-      const selected = shell.villages.find(v => v.id === selectedVillageId) ?? shell.villages[0]
+      const selected = getSelectedVillage(shell.villages, selectedVillageId)
       if (!selected) {
         villageDetailsHost.innerHTML = '<p class="text-amber-100/80">No villages found.</p>'
         return
@@ -443,6 +476,14 @@ async function mountGameShell() {
           <div class="nav-item"><span>Wood</span><span>${selected.wood}</span></div>
           <div class="nav-item"><span>Clay</span><span>${selected.clay}</span></div>
           <div class="nav-item"><span>Iron</span><span>${selected.iron}</span></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-4">
+          <div class="nav-item"><span>Spearmen</span><span>${selected.troops.spearmen}</span></div>
+          <div class="nav-item"><span>Swordsmen</span><span>${selected.troops.swordsmen}</span></div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Spearman">Recruit Spearman</button>
+          <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Swordsman">Recruit Swordsman</button>
         </div>
         <div class="space-y-2">
           <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main})</span><button class="btn btn-primary upgrade-btn" data-village-id="${selected.id}" data-building="MainBuilding">Upgrade</button></div>
@@ -466,6 +507,38 @@ async function mountGameShell() {
           }
         })
       })
+
+      villageDetailsHost.querySelectorAll<HTMLButtonElement>('.recruit-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true
+          try {
+            await api(`/api/game/villages/${btn.dataset.villageId}/recruit`, 'POST', {
+              unitType: btn.dataset.unit,
+              count: 1
+            })
+            toast('Unit recruited.', 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Recruit failed', 'error')
+          } finally {
+            btn.disabled = false
+          }
+        })
+      })
+    }
+
+    function renderMovements() {
+      if (!shell.movements.length) {
+        movementListHost.innerHTML = '<div class="text-amber-100/80 text-sm">No active movements.</div>'
+        return
+      }
+
+      movementListHost.innerHTML = shell.movements.map((m) => `
+        <div class="nav-item mb-2 text-sm">
+          <span>${m.unitCount} ${m.unitType} → ${m.mission}</span>
+          <span>${new Date(m.arrivesAt).toLocaleTimeString()}</span>
+        </div>
+      `).join('')
     }
 
     function renderMap() {
@@ -488,8 +561,24 @@ async function mountGameShell() {
       })
     })
 
+    async function reloadShell() {
+      shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=16`) as GameShell
+      if (!shell.villages.find(v => v.id === selectedVillageId)) {
+        selectedVillageId = shell.villages[0]?.id ?? null
+      }
+      renderVillageDetails()
+      renderMap()
+      renderMovements()
+    }
+
+    document.getElementById('chunk-left')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX - 1, 3); await reloadShell() })
+    document.getElementById('chunk-right')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX + 1, 3); await reloadShell() })
+    document.getElementById('chunk-up')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY - 1, 3); await reloadShell() })
+    document.getElementById('chunk-down')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY + 1, 3); await reloadShell() })
+
     renderVillageDetails()
     renderMap()
+    renderMovements()
   } catch {
     clearAuth()
     location.hash = '#login'

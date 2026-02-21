@@ -4,6 +4,83 @@ namespace api.Game;
 
 public class GameWorldService
 {
+    public DateTime GetMovementArrival(DateTime departedAtUtc, Village source, Village target, UnitType unitType)
+    {
+        var distance = Distance((source.X, source.Y), (target.X, target.Y));
+        var secondsPerTile = unitType switch
+        {
+            UnitType.Spearman => 312,
+            UnitType.Swordsman => 360,
+            _ => 360
+        };
+
+        var travelSeconds = (int)Math.Ceiling(distance * secondsPerTile);
+        return departedAtUtc.AddSeconds(travelSeconds);
+    }
+
+    public bool TryRecruitUnits(Village village, UnitType unitType, int count)
+    {
+        if (count <= 0)
+        {
+            return false;
+        }
+
+        var (woodCost, clayCost, ironCost) = RecruitmentCost(unitType);
+        var totalWood = woodCost * count;
+        var totalClay = clayCost * count;
+        var totalIron = ironCost * count;
+
+        if (village.Wood < totalWood || village.Clay < totalClay || village.Iron < totalIron)
+        {
+            return false;
+        }
+
+        village.Wood -= totalWood;
+        village.Clay -= totalClay;
+        village.Iron -= totalIron;
+
+        switch (unitType)
+        {
+            case UnitType.Spearman:
+                village.Spearmen += count;
+                break;
+            case UnitType.Swordsman:
+                village.Swordsmen += count;
+                break;
+            default:
+                return false;
+        }
+
+        return true;
+    }
+
+    public CombatResult ResolveCombat(Army attackingArmy, Army defendingArmy)
+    {
+        if (attackingArmy.Count <= 0)
+        {
+            return new CombatResult(false, 0, defendingArmy.Count);
+        }
+
+        if (defendingArmy.Count <= 0)
+        {
+            return new CombatResult(true, attackingArmy.Count, 0);
+        }
+
+        var attackerPower = attackingArmy.Count * Attack(attackingArmy.UnitType);
+        var defenderPower = defendingArmy.Count * Defense(defendingArmy.UnitType);
+
+        if (attackerPower > defenderPower)
+        {
+            var attackerLossRatio = Math.Clamp(defenderPower / attackerPower, 0.05, 0.95);
+            var attackerSurvivors = Math.Max(0, attackingArmy.Count - (int)Math.Round(attackingArmy.Count * attackerLossRatio));
+            return new CombatResult(true, attackerSurvivors, 0);
+        }
+
+        var defenderLossRatio = Math.Clamp(attackerPower / defenderPower, 0.05, 0.95);
+        var defenderSurvivors = Math.Max(0, defendingArmy.Count - (int)Math.Round(defendingArmy.Count * defenderLossRatio));
+        return new CombatResult(false, 0, defenderSurvivors);
+    }
+
     public IReadOnlyList<MapTile> GenerateMap(int seed, int width, int height)
     {
         var tiles = new List<MapTile>(width * height);
@@ -146,6 +223,36 @@ public class GameWorldService
     private static int Cost(int baseValue, int level)
     {
         return (int)Math.Ceiling(baseValue * Math.Pow(1.25, level - 1));
+    }
+
+    private static int Attack(UnitType unitType)
+    {
+        return unitType switch
+        {
+            UnitType.Spearman => 20,
+            UnitType.Swordsman => 25,
+            _ => 10
+        };
+    }
+
+    private static int Defense(UnitType unitType)
+    {
+        return unitType switch
+        {
+            UnitType.Spearman => 15,
+            UnitType.Swordsman => 50,
+            _ => 15
+        };
+    }
+
+    private static (int Wood, int Clay, int Iron) RecruitmentCost(UnitType unitType)
+    {
+        return unitType switch
+        {
+            UnitType.Spearman => (50, 30, 10),
+            UnitType.Swordsman => (30, 30, 70),
+            _ => (50, 30, 10)
+        };
     }
 
     private static int Hash(int seed, int x, int y)

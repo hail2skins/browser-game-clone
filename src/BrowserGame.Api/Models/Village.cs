@@ -27,6 +27,8 @@ public class Village
     public int ClayPitLevel { get; set; } = 1;
     public int IronMineLevel { get; set; } = 1;
     public int WarehouseLevel { get; set; } = 1;
+    public int Spearmen { get; set; } = 10;
+    public int Swordsmen { get; set; } = 0;
 
     public DateTime LastResourceTickAt { get; set; } = DateTime.UtcNow;
 
