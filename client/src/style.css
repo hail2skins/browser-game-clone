@@ -197,6 +197,53 @@ body::before {
   background: linear-gradient(180deg, rgb(18 23 18 / 90%), rgb(28 31 27 / 88%));
 }
 
+.village-scene {
+  position: relative;
+  height: 260px;
+  border-radius: 12px;
+  border: 1px solid rgb(185 138 61 / 45%);
+  background:
+    radial-gradient(circle at 50% 35%, rgb(52 69 44 / 70%), rgb(16 24 16 / 95%)),
+    linear-gradient(180deg, rgb(18 23 18 / 90%), rgb(28 31 27 / 88%));
+  overflow: hidden;
+}
+
+.village-ring {
+  position: absolute;
+  inset: 22px;
+  border-radius: 999px;
+  border: 3px solid rgb(89 72 49 / 85%);
+}
+
+.village-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: .3rem .55rem;
+  font-weight: 800;
+  font-size: .85rem;
+  border-radius: .4rem;
+  background: rgb(35 28 20 / 90%);
+  border: 1px solid rgb(195 162 104 / 65%);
+}
+
+.scene-node {
+  position: absolute;
+  padding: .2rem .45rem;
+  font-size: .74rem;
+  font-weight: 700;
+  border-radius: .4rem;
+  background: rgb(24 30 24 / 92%);
+  border: 1px solid rgb(185 138 61 / 55%);
+}
+
+.node-main { left: 50%; top: 19%; transform: translate(-50%, -50%); }
+.node-wood { left: 21%; top: 36%; transform: translate(-50%, -50%); }
+.node-clay { left: 75%; top: 36%; transform: translate(-50%, -50%); }
+.node-iron { left: 27%; top: 73%; transform: translate(-50%, -50%); }
+.node-store { left: 73%; top: 73%; transform: translate(-50%, -50%); }
+
 @media (max-width: 1024px) {
   .shell-grid { grid-template-columns: 1fr !important; grid-template-rows: auto auto 1fr auto !important; }
   .shell-sidebar { border-right: none !important; border-top: 1px solid rgb(185 138 61 / 35%); }

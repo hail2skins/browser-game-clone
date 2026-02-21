@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { clampChunk, getSelectedVillage } from './gameShellState'
+import { clampChunk, getInitialChunk, getSelectedVillage } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -260,12 +260,27 @@ type GameShell = {
       spearmen: number
       swordsmen: number
     }
+    economy: {
+      production: {
+        woodPerHour: number
+        clayPerHour: number
+        ironPerHour: number
+      }
+      warehouseCapacity: number
+    }
     buildings: {
       main: number
       timberCamp: number
       clayPit: number
       ironMine: number
       warehouse: number
+    }
+    upgradeCosts: {
+      main: { wood: number; clay: number; iron: number }
+      timberCamp: { wood: number; clay: number; iron: number }
+      clayPit: { wood: number; clay: number; iron: number }
+      ironMine: { wood: number; clay: number; iron: number }
+      warehouse: { wood: number; clay: number; iron: number }
     }
   }[]
   movements: {
@@ -288,6 +303,8 @@ type GameShell = {
     name: string
     x: number
     y: number
+    kind: 'abandoned' | 'player'
+    troops: number
   }[]
 }
 
@@ -316,6 +333,18 @@ function startPhaser(
 
       this.add.rectangle(176, 176, 352, 352, 0x0f1b12).setStrokeStyle(2, 0x9b6d2f, 0.7)
 
+      for (let y = 0; y < shell.world.chunkSize; y++) {
+        for (let x = 0; x < shell.world.chunkSize; x++) {
+          this.add.rectangle(
+            offsetX + (x * tileSize) + (tileSize / 2),
+            offsetY + (y * tileSize) + (tileSize / 2),
+            tileSize,
+            tileSize,
+            0x101810
+          ).setAlpha(0.95).setStrokeStyle(1, 0x0b120b, 0.4)
+        }
+      }
+
       shell.world.tiles.forEach((tile) => {
         const color = terrainColor[tile.terrain] ?? 0x334f2a
         const tileRect = this.add.rectangle(
@@ -329,10 +358,13 @@ function startPhaser(
       })
 
       shell.villages.forEach((village) => {
+        const relativeX = village.x - chunkOffsetX
+        const relativeY = village.y - chunkOffsetY
+        if (relativeX < 0 || relativeY < 0 || relativeX >= shell.world.chunkSize || relativeY >= shell.world.chunkSize) return
         const selected = village.id === selectedVillageId
         const marker = this.add.circle(
-          offsetX + ((village.x - chunkOffsetX) * tileSize) + (tileSize / 2),
-          offsetY + ((village.y - chunkOffsetY) * tileSize) + (tileSize / 2),
+          offsetX + (relativeX * tileSize) + (tileSize / 2),
+          offsetY + (relativeY * tileSize) + (tileSize / 2),
           selected ? 8 : 6,
           selected ? 0xffd166 : 0xe6e6e6
         )
@@ -341,9 +373,12 @@ function startPhaser(
       })
 
       shell.visibleVillages.forEach((village) => {
+        const relativeX = village.x - chunkOffsetX
+        const relativeY = village.y - chunkOffsetY
+        if (relativeX < 0 || relativeY < 0 || relativeX >= shell.world.chunkSize || relativeY >= shell.world.chunkSize) return
         this.add.circle(
-          offsetX + ((village.x - chunkOffsetX) * tileSize) + (tileSize / 2),
-          offsetY + ((village.y - chunkOffsetY) * tileSize) + (tileSize / 2),
+          offsetX + (relativeX * tileSize) + (tileSize / 2),
+          offsetY + (relativeY * tileSize) + (tileSize / 2),
           5,
           0xe15656
         )
@@ -351,8 +386,29 @@ function startPhaser(
 
       this.add.text(390, 14, 'World Map (Chunked)', { color: '#f2e4bf', fontSize: '16px' })
       this.add.text(390, 38, `Your villages: ${shell.villages.length}`, { color: '#c9b88f', fontSize: '12px' })
-      this.add.text(390, 58, `Visible enemies: ${shell.visibleVillages.length}`, { color: '#d29a9a', fontSize: '12px' })
-      this.add.text(390, 78, 'Yellow = You, Red = Targets', { color: '#c9b88f', fontSize: '12px' })
+      this.add.text(390, 58, `Visible targets: ${shell.visibleVillages.length}`, { color: '#d29a9a', fontSize: '12px' })
+      this.add.text(390, 78, 'Yellow = You, Red = Abandoned', { color: '#c9b88f', fontSize: '12px' })
+
+      const miniX = 390
+      const miniY = 110
+      const miniW = 190
+      const miniH = 190
+      this.add.rectangle(miniX + (miniW / 2), miniY + (miniH / 2), miniW, miniH, 0x2a3d21).setStrokeStyle(1, 0x9b6d2f, 0.8)
+
+      const scaleX = miniW / shell.world.width
+      const scaleY = miniH / shell.world.height
+      shell.villages.forEach((v) => {
+        this.add.rectangle(miniX + (v.x * scaleX), miniY + (v.y * scaleY), 3, 3, 0xffe18f)
+      })
+      shell.visibleVillages.forEach((v) => {
+        this.add.rectangle(miniX + (v.x * scaleX), miniY + (v.y * scaleY), 3, 3, 0xe15656)
+      })
+
+      const viewX = miniX + (chunkOffsetX * scaleX)
+      const viewY = miniY + (chunkOffsetY * scaleY)
+      const viewW = shell.world.chunkSize * scaleX
+      const viewH = shell.world.chunkSize * scaleY
+      this.add.rectangle(viewX + (viewW / 2), viewY + (viewH / 2), viewW, viewH).setStrokeStyle(1, 0xf4e9c8, 0.9).setFillStyle(0x000000, 0)
     }
   }
 
@@ -380,8 +436,21 @@ async function mountGameShell() {
       return
     }
 
-    let shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=16`) as GameShell
+    const chunkSize = 16
+    let shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
     let selectedVillageId = shell.villages[0]?.id ?? null
+    const initialChunk = getInitialChunk({
+      villages: shell.villages,
+      selectedVillageId,
+      chunkSize,
+      worldWidth: shell.world.width,
+      worldHeight: shell.world.height
+    })
+    if (initialChunk.chunkX !== chunkX || initialChunk.chunkY !== chunkY) {
+      chunkX = initialChunk.chunkX
+      chunkY = initialChunk.chunkY
+      shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
+    }
 
     const adminPanel = auth.isAdmin ? `
       <section class="medieval-panel mt-4 p-4">
@@ -436,6 +505,7 @@ async function mountGameShell() {
               <button id="chunk-up" class="btn btn-secondary">↑</button>
               <button id="chunk-down" class="btn btn-secondary">↓</button>
               <button id="chunk-right" class="btn btn-secondary">→</button>
+              <button id="chunk-home" class="btn btn-primary">Home</button>
             </div>
             <div id="phaser-root" class="canvas-shell"></div>
           </section>
@@ -502,10 +572,25 @@ async function mountGameShell() {
       }
 
       villageDetailsHost.innerHTML = `
+        <div class="village-scene mb-4">
+          <div class="village-ring"></div>
+          <div class="village-center">Keep</div>
+          <div class="scene-node node-main">Main ${selected.buildings.main}</div>
+          <div class="scene-node node-wood">Wood ${selected.buildings.timberCamp}</div>
+          <div class="scene-node node-clay">Clay ${selected.buildings.clayPit}</div>
+          <div class="scene-node node-iron">Iron ${selected.buildings.ironMine}</div>
+          <div class="scene-node node-store">Store ${selected.buildings.warehouse}</div>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm mb-4">
           <div class="nav-item"><span>Wood</span><span>${selected.wood}</span></div>
           <div class="nav-item"><span>Clay</span><span>${selected.clay}</span></div>
           <div class="nav-item"><span>Iron</span><span>${selected.iron}</span></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 text-sm mb-4">
+          <div class="nav-item"><span>Wood/h</span><span>${selected.economy.production.woodPerHour}</span></div>
+          <div class="nav-item"><span>Clay/h</span><span>${selected.economy.production.clayPerHour}</span></div>
+          <div class="nav-item"><span>Iron/h</span><span>${selected.economy.production.ironPerHour}</span></div>
+          <div class="nav-item"><span>Storage</span><span>${selected.economy.warehouseCapacity}</span></div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-4">
           <div class="nav-item"><span>Spearmen</span><span>${selected.troops.spearmen}</span></div>
@@ -516,11 +601,11 @@ async function mountGameShell() {
           <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Swordsman">Recruit Swordsman</button>
         </div>
         <div class="space-y-2">
-          <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="MainBuilding">Queue</button></div>
-          <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="TimberCamp">Queue</button></div>
-          <div class="nav-item"><span>Clay Pit (Lv ${selected.buildings.clayPit})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="ClayPit">Queue</button></div>
-          <div class="nav-item"><span>Iron Mine (Lv ${selected.buildings.ironMine})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="IronMine">Queue</button></div>
-          <div class="nav-item"><span>Warehouse (Lv ${selected.buildings.warehouse})</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="Warehouse">Queue</button></div>
+          <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main}) [${selected.upgradeCosts.main.wood}/${selected.upgradeCosts.main.clay}/${selected.upgradeCosts.main.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="MainBuilding">Queue</button></div>
+          <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp}) [${selected.upgradeCosts.timberCamp.wood}/${selected.upgradeCosts.timberCamp.clay}/${selected.upgradeCosts.timberCamp.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="TimberCamp">Queue</button></div>
+          <div class="nav-item"><span>Clay Pit (Lv ${selected.buildings.clayPit}) [${selected.upgradeCosts.clayPit.wood}/${selected.upgradeCosts.clayPit.clay}/${selected.upgradeCosts.clayPit.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="ClayPit">Queue</button></div>
+          <div class="nav-item"><span>Iron Mine (Lv ${selected.buildings.ironMine}) [${selected.upgradeCosts.ironMine.wood}/${selected.upgradeCosts.ironMine.clay}/${selected.upgradeCosts.ironMine.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="IronMine">Queue</button></div>
+          <div class="nav-item"><span>Warehouse (Lv ${selected.buildings.warehouse}) [${selected.upgradeCosts.warehouse.wood}/${selected.upgradeCosts.warehouse.clay}/${selected.upgradeCosts.warehouse.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="Warehouse">Queue</button></div>
         </div>`
 
       villageDetailsHost.querySelectorAll<HTMLButtonElement>('.queue-btn').forEach((btn) => {
@@ -562,7 +647,7 @@ async function mountGameShell() {
             <h4 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Attack Target</h4>
             <div class="flex gap-2">
               <select id="attack-target" class="input-field">
-                ${shell.visibleVillages.map(v => `<option value="${v.id}">${v.name} (${v.x}|${v.y})</option>`).join('')}
+                ${shell.visibleVillages.map(v => `<option value="${v.id}">${v.name} (${v.x}|${v.y}) • ${v.troops} troops</option>`).join('')}
               </select>
               <button id="send-attack" class="btn btn-danger">Send 5 Spearmen</button>
             </div>
@@ -635,7 +720,7 @@ async function mountGameShell() {
     })
 
     async function reloadShell() {
-      shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=16`) as GameShell
+      shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
       if (!shell.villages.find(v => v.id === selectedVillageId)) {
         selectedVillageId = shell.villages[0]?.id ?? null
       }
@@ -645,10 +730,24 @@ async function mountGameShell() {
       renderBuildQueue()
     }
 
-    document.getElementById('chunk-left')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX - 1, 3); await reloadShell() })
-    document.getElementById('chunk-right')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX + 1, 3); await reloadShell() })
-    document.getElementById('chunk-up')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY - 1, 3); await reloadShell() })
-    document.getElementById('chunk-down')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY + 1, 3); await reloadShell() })
+    document.getElementById('chunk-left')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX - 1, Math.floor((shell.world.width - 1) / chunkSize)); await reloadShell() })
+    document.getElementById('chunk-right')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX + 1, Math.floor((shell.world.width - 1) / chunkSize)); await reloadShell() })
+    document.getElementById('chunk-up')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY - 1, Math.floor((shell.world.height - 1) / chunkSize)); await reloadShell() })
+    document.getElementById('chunk-down')!.addEventListener('click', async () => { chunkY = clampChunk(chunkY + 1, Math.floor((shell.world.height - 1) / chunkSize)); await reloadShell() })
+    document.getElementById('chunk-home')!.addEventListener('click', async () => {
+      const selected = getSelectedVillage(shell.villages, selectedVillageId)
+      if (!selected) return
+      const homeChunk = getInitialChunk({
+        villages: [selected],
+        selectedVillageId: selected.id,
+        chunkSize,
+        worldWidth: shell.world.width,
+        worldHeight: shell.world.height
+      })
+      chunkX = homeChunk.chunkX
+      chunkY = homeChunk.chunkY
+      await reloadShell()
+    })
 
     renderVillageDetails()
     renderMap()

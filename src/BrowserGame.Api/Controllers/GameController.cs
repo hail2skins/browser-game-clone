@@ -72,12 +72,28 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             .Where(v => !villageIds.Contains(v.Id) &&
                         v.X >= minX && v.X <= maxX &&
                         v.Y >= minY && v.Y <= maxY)
+            .Join(
+                db.Users,
+                village => village.UserId,
+                user => user.Id,
+                (village, owner) => new
+                {
+                    village.Id,
+                    village.Name,
+                    village.X,
+                    village.Y,
+                    owner.Email,
+                    village.Spearmen,
+                    village.Swordsmen
+                })
             .Select(v => new
             {
                 v.Id,
                 v.Name,
                 v.X,
-                v.Y
+                v.Y,
+                kind = v.Email == "barbarian@realm.local" ? "abandoned" : "player",
+                troops = v.Spearmen + v.Swordsmen
             })
             .ToListAsync();
 

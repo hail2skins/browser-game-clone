@@ -17,3 +17,25 @@ export function chunkForVillage(village: VillageSummary, chunkSize: number): { c
     chunkY: Math.floor(village.y / chunkSize)
   }
 }
+
+type InitialChunkInput<T extends VillageSummary> = {
+  villages: T[]
+  selectedVillageId: string | null
+  chunkSize: number
+  worldWidth: number
+  worldHeight: number
+}
+
+export function getInitialChunk<T extends VillageSummary>(input: InitialChunkInput<T>): { chunkX: number; chunkY: number } {
+  const village = getSelectedVillage(input.villages, input.selectedVillageId)
+  if (!village) return { chunkX: 0, chunkY: 0 }
+
+  const raw = chunkForVillage(village, input.chunkSize)
+  const maxChunkX = Math.floor((input.worldWidth - 1) / input.chunkSize)
+  const maxChunkY = Math.floor((input.worldHeight - 1) / input.chunkSize)
+
+  return {
+    chunkX: clampChunk(raw.chunkX, maxChunkX),
+    chunkY: clampChunk(raw.chunkY, maxChunkY)
+  }
+}

@@ -166,6 +166,54 @@ public class GameWorldServiceTests
         Assert.Equal(2, village.TimberCampLevel);
     }
 
+    [Fact]
+    public void GetUpgradeCost_ReturnsScaledCostForNextLevel()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            TimberCampLevel = 3
+        };
+
+        var cost = sut.GetUpgradeCost(village, BuildingType.TimberCamp);
+
+        Assert.True(cost.Wood > 80);
+        Assert.True(cost.Clay > 70);
+        Assert.True(cost.Iron > 60);
+    }
+
+    [Fact]
+    public void GetProductionPerHour_ReturnsCurrentRatesByResourceBuilding()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            TimberCampLevel = 2,
+            ClayPitLevel = 4,
+            IronMineLevel = 1
+        };
+
+        var rates = sut.GetProductionPerHour(village);
+
+        Assert.Equal(75, rates.WoodPerHour);
+        Assert.Equal(115, rates.ClayPerHour);
+        Assert.Equal(55, rates.IronPerHour);
+    }
+
+    [Fact]
+    public void GetWarehouseCapacity_ReturnsCapacityForCurrentLevel()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            WarehouseLevel = 3
+        };
+
+        var capacity = sut.GetWarehouseCapacity(village);
+
+        Assert.Equal(2200, capacity);
+    }
+
     private static double Distance((int X, int Y) first, (int X, int Y) second)
     {
         var dx = first.X - second.X;

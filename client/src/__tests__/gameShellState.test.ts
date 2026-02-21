@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkForVillage, clampChunk, getSelectedVillage } from '../gameShellState'
+import { chunkForVillage, clampChunk, getInitialChunk, getSelectedVillage } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -26,5 +26,19 @@ describe('gameShellState', () => {
 
   it('computes village chunk from absolute coordinate', () => {
     expect(chunkForVillage({ id: 'a', x: 33, y: 17 }, 16)).toEqual({ chunkX: 2, chunkY: 1 })
+  })
+
+  it('gets initial chunk centered on selected village and clamps to world', () => {
+    const villages = [{ id: 'a', x: 63, y: 63 }, { id: 'b', x: 2, y: 2 }]
+
+    const chunk = getInitialChunk({
+      villages,
+      selectedVillageId: 'a',
+      chunkSize: 16,
+      worldWidth: 64,
+      worldHeight: 64
+    })
+
+    expect(chunk).toEqual({ chunkX: 3, chunkY: 3 })
   })
 })
