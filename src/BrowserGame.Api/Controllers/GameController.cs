@@ -53,8 +53,16 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         var outgoing = await db.TroopMovements
             .Include(m => m.SourceVillage)
             .Include(m => m.TargetVillage)
-            .Where(m => m.Status == "outbound" && m.SourceVillage != null && m.SourceVillage.UserId == userId)
+            .Where(m => m.Status == "outbound" &&
+                        ((m.SourceVillage != null && m.SourceVillage.UserId == userId) ||
+                         (m.TargetVillage != null && m.TargetVillage.UserId == userId)))
             .OrderBy(m => m.ArrivesAt)
+            .ToListAsync();
+
+        var reports = await db.BattleReports
+            .Where(r => r.AttackerUserId == userId || r.DefenderUserId == userId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(12)
             .ToListAsync();
 
         var villageIds = user.Villages.Select(v => v.Id).ToList();
@@ -102,6 +110,7 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         return Ok(new
         {
             player = user.Email,
+            serverTimeUtc = now,
             world = new
             {
                 width = WorldWidth,
@@ -156,10 +165,30 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 m.Id,
                 m.SourceVillageId,
                 m.TargetVillageId,
+                sourceVillageName = m.SourceVillage != null ? m.SourceVillage.Name : "Unknown",
+                targetVillageName = m.TargetVillage != null ? m.TargetVillage.Name : "Unknown",
                 m.UnitType,
                 m.UnitCount,
                 m.Mission,
-                m.ArrivesAt
+                m.ArrivesAt,
+                m.LootWood,
+                m.LootClay,
+                m.LootIron
+            }),
+            reports = reports.Select(r => new
+            {
+                r.Id,
+                r.AttackerVillageName,
+                r.DefenderVillageName,
+                r.UnitType,
+                r.AttackerSent,
+                r.AttackerSurvivors,
+                r.DefenderSurvivors,
+                r.LootWood,
+                r.LootClay,
+                r.LootIron,
+                r.Outcome,
+                r.CreatedAt
             }),
             buildQueue = buildQueue.Select(q => new
             {
@@ -284,7 +313,7 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         if (target is null)
             return NotFound("Target village not found.");
 
-        if (!TryRemoveUnits(source, unitType, request.UnitCount))
+        if (!worldService.TryDispatchUnits(source, unitType, request.UnitCount))
             return BadRequest("Not enough units in source village.");
 
         var now = DateTime.UtcNow;
@@ -299,7 +328,10 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             Mission = "attack",
             Status = "outbound",
             DepartedAt = now,
-            ArrivesAt = arrival
+            ArrivesAt = arrival,
+            LootWood = 0,
+            LootClay = 0,
+            LootIron = 0
         });
 
         await db.SaveChangesAsync();
@@ -330,6 +362,19 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 continue;
             }
 
+            if (movement.Mission.Equals("return", StringComparison.OrdinalIgnoreCase))
+            {
+                worldService.ApplyReturnHome(
+                    movement.TargetVillage,
+                    attackerUnitType,
+                    movement.UnitCount,
+                    new ResourceCost(movement.LootWood, movement.LootClay, movement.LootIron));
+
+                movement.Status = "resolved";
+                movement.ResolvedAt = now;
+                continue;
+            }
+
             var defendingType = movement.TargetVillage.Swordsmen > 0 ? UnitType.Swordsman : UnitType.Spearman;
             var defendingCount = defendingType == UnitType.Swordsman
                 ? movement.TargetVillage.Swordsmen
@@ -346,6 +391,46 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             else
             {
                 movement.TargetVillage.Spearmen = result.DefenderSurvivors;
+            }
+
+            var loot = result.AttackerWon
+                ? worldService.CalculatePlunder(attackerUnitType, result.AttackerSurvivors, movement.TargetVillage)
+                : new ResourceCost(0, 0, 0);
+
+            db.BattleReports.Add(new BattleReport
+            {
+                AttackerUserId = movement.SourceVillage.UserId,
+                DefenderUserId = movement.TargetVillage.UserId,
+                AttackerVillageName = movement.SourceVillage.Name,
+                DefenderVillageName = movement.TargetVillage.Name,
+                UnitType = movement.UnitType,
+                AttackerSent = movement.UnitCount,
+                AttackerSurvivors = result.AttackerSurvivors,
+                DefenderSurvivors = result.DefenderSurvivors,
+                LootWood = loot.Wood,
+                LootClay = loot.Clay,
+                LootIron = loot.Iron,
+                Outcome = result.AttackerWon ? "victory" : "defeat",
+                CreatedAt = now
+            });
+
+            if (result.AttackerSurvivors > 0)
+            {
+                var returnArrival = worldService.GetMovementArrival(now, movement.TargetVillage, movement.SourceVillage, attackerUnitType);
+                db.TroopMovements.Add(new TroopMovement
+                {
+                    SourceVillageId = movement.TargetVillageId,
+                    TargetVillageId = movement.SourceVillageId,
+                    UnitType = movement.UnitType,
+                    UnitCount = result.AttackerSurvivors,
+                    Mission = "return",
+                    Status = "outbound",
+                    DepartedAt = now,
+                    ArrivesAt = returnArrival,
+                    LootWood = loot.Wood,
+                    LootClay = loot.Clay,
+                    LootIron = loot.Iron
+                });
             }
 
             movement.Status = "resolved";
@@ -372,21 +457,6 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
 
             worldService.CompleteQueuedBuildingUpgrade(queued.Village, buildingType);
             queued.CompletedAt = now;
-        }
-    }
-
-    private static bool TryRemoveUnits(Village village, UnitType unitType, int count)
-    {
-        switch (unitType)
-        {
-            case UnitType.Spearman when village.Spearmen >= count:
-                village.Spearmen -= count;
-                return true;
-            case UnitType.Swordsman when village.Swordsmen >= count:
-                village.Swordsmen -= count;
-                return true;
-            default:
-                return false;
         }
     }
 

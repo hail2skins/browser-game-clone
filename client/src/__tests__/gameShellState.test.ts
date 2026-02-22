@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkForVillage, clampChunk, getInitialChunk, getSelectedVillage } from '../gameShellState'
+import { chunkForVillage, clampChunk, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -40,5 +40,17 @@ describe('gameShellState', () => {
     })
 
     expect(chunk).toEqual({ chunkX: 3, chunkY: 3 })
+  })
+
+  it('computes remaining seconds until a target timestamp', () => {
+    const now = Date.parse('2026-02-22T12:00:00Z')
+    const then = Date.parse('2026-02-22T12:01:15Z')
+
+    expect(secondsUntil(then, now)).toBe(75)
+  })
+
+  it('formats countdown in mm:ss', () => {
+    expect(formatCountdown(5)).toBe('00:05')
+    expect(formatCountdown(125)).toBe('02:05')
   })
 })

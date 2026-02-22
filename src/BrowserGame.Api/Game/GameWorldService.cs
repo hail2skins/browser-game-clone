@@ -54,6 +54,26 @@ public class GameWorldService
         return true;
     }
 
+    public bool TryDispatchUnits(Village village, UnitType unitType, int count)
+    {
+        if (count <= 0)
+        {
+            return false;
+        }
+
+        switch (unitType)
+        {
+            case UnitType.Spearman when village.Spearmen >= count:
+                village.Spearmen -= count;
+                return true;
+            case UnitType.Swordsman when village.Swordsmen >= count:
+                village.Swordsmen -= count;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public CombatResult ResolveCombat(Army attackingArmy, Army defendingArmy)
     {
         if (attackingArmy.Count <= 0)
@@ -227,6 +247,64 @@ public class GameWorldService
         SetLevel(village, buildingType, level + 1);
     }
 
+    public ResourceCost CalculatePlunder(UnitType unitType, int survivors, Village targetVillage)
+    {
+        if (survivors <= 0)
+        {
+            return new ResourceCost(0, 0, 0);
+        }
+
+        var capacity = survivors * CarryCapacity(unitType);
+        var availableTotal = targetVillage.Wood + targetVillage.Clay + targetVillage.Iron;
+        var totalToSteal = Math.Min(capacity, availableTotal);
+
+        var wood = Math.Min(targetVillage.Wood, totalToSteal / 3);
+        var clay = Math.Min(targetVillage.Clay, totalToSteal / 3);
+        var iron = Math.Min(targetVillage.Iron, totalToSteal / 3);
+
+        var remaining = totalToSteal - (wood + clay + iron);
+        if (remaining > 0)
+        {
+            var takeWood = Math.Min(remaining, targetVillage.Wood - wood);
+            wood += takeWood;
+            remaining -= takeWood;
+        }
+        if (remaining > 0)
+        {
+            var takeClay = Math.Min(remaining, targetVillage.Clay - clay);
+            clay += takeClay;
+            remaining -= takeClay;
+        }
+        if (remaining > 0)
+        {
+            var takeIron = Math.Min(remaining, targetVillage.Iron - iron);
+            iron += takeIron;
+        }
+
+        targetVillage.Wood -= wood;
+        targetVillage.Clay -= clay;
+        targetVillage.Iron -= iron;
+
+        return new ResourceCost(wood, clay, iron);
+    }
+
+    public void ApplyReturnHome(Village homeVillage, UnitType unitType, int survivors, ResourceCost loot)
+    {
+        switch (unitType)
+        {
+            case UnitType.Spearman:
+                homeVillage.Spearmen += survivors;
+                break;
+            case UnitType.Swordsman:
+                homeVillage.Swordsmen += survivors;
+                break;
+        }
+
+        homeVillage.Wood += loot.Wood;
+        homeVillage.Clay += loot.Clay;
+        homeVillage.Iron += loot.Iron;
+    }
+
     private static int Produce(int level, double elapsedSeconds)
     {
         var perHour = PerHour(level);
@@ -312,6 +390,16 @@ public class GameWorldService
             UnitType.Spearman => (50, 30, 10),
             UnitType.Swordsman => (30, 30, 70),
             _ => (50, 30, 10)
+        };
+    }
+
+    private static int CarryCapacity(UnitType unitType)
+    {
+        return unitType switch
+        {
+            UnitType.Spearman => 25,
+            UnitType.Swordsman => 15,
+            _ => 20
         };
     }
 

@@ -214,6 +214,73 @@ public class GameWorldServiceTests
         Assert.Equal(2200, capacity);
     }
 
+    [Fact]
+    public void CalculatePlunder_ReducesTargetResourcesAndCapsByCarryCapacity()
+    {
+        var sut = new GameWorldService();
+        var target = new Village
+        {
+            Wood = 300,
+            Clay = 300,
+            Iron = 300
+        };
+
+        var loot = sut.CalculatePlunder(UnitType.Spearman, survivors: 4, target);
+
+        Assert.Equal(100, loot.Wood + loot.Clay + loot.Iron);
+        Assert.Equal(900 - 100, target.Wood + target.Clay + target.Iron);
+    }
+
+    [Fact]
+    public void ApplyReturnHome_AddsUnitsAndLootToHomeVillage()
+    {
+        var sut = new GameWorldService();
+        var home = new Village
+        {
+            Spearmen = 2,
+            Wood = 100,
+            Clay = 100,
+            Iron = 100
+        };
+
+        sut.ApplyReturnHome(home, UnitType.Spearman, survivors: 3, new ResourceCost(10, 11, 12));
+
+        Assert.Equal(5, home.Spearmen);
+        Assert.Equal(110, home.Wood);
+        Assert.Equal(111, home.Clay);
+        Assert.Equal(112, home.Iron);
+    }
+
+    [Fact]
+    public void TryDispatchUnits_WhenEnoughUnits_RemovesFromVillage()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            Spearmen = 10
+        };
+
+        var sent = sut.TryDispatchUnits(village, UnitType.Spearman, 6);
+
+        Assert.True(sent);
+        Assert.Equal(4, village.Spearmen);
+    }
+
+    [Fact]
+    public void TryDispatchUnits_WhenInsufficientUnits_ReturnsFalseWithoutMutation()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            Swordsmen = 2
+        };
+
+        var sent = sut.TryDispatchUnits(village, UnitType.Swordsman, 5);
+
+        Assert.False(sent);
+        Assert.Equal(2, village.Swordsmen);
+    }
+
     private static double Distance((int X, int Y) first, (int X, int Y) second)
     {
         var dx = first.X - second.X;

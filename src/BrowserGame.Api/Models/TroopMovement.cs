@@ -23,6 +23,10 @@ public class TroopMovement
     [Required, MaxLength(32)]
     public string Status { get; set; } = "outbound";
 
+    public int LootWood { get; set; }
+    public int LootClay { get; set; }
+    public int LootIron { get; set; }
+
     public DateTime DepartedAt { get; set; } = DateTime.UtcNow;
     public DateTime ArrivesAt { get; set; }
     public DateTime? ResolvedAt { get; set; }

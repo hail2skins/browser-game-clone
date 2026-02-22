@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WorldTile> WorldTiles => Set<WorldTile>();
     public DbSet<TroopMovement> TroopMovements => Set<TroopMovement>();
     public DbSet<BuildingQueueItem> BuildingQueueItems => Set<BuildingQueueItem>();
+    public DbSet<BattleReport> BattleReports => Set<BattleReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,5 +74,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<BuildingQueueItem>()
             .HasIndex(q => new { q.VillageId, q.CompletesAt });
+
+        modelBuilder.Entity<BattleReport>()
+            .HasIndex(r => new { r.AttackerUserId, r.CreatedAt });
+
+        modelBuilder.Entity<BattleReport>()
+            .HasIndex(r => new { r.DefenderUserId, r.CreatedAt });
     }
 }

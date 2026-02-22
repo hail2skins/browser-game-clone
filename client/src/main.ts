@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { clampChunk, getInitialChunk, getSelectedVillage } from './gameShellState'
+import { clampChunk, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -239,6 +239,7 @@ function mountAwaitingApproval() {
 type TileTerrain = 'plains' | 'forest' | 'hills' | 'water'
 
 type GameShell = {
+  serverTimeUtc: string
   world: {
     width: number
     height: number
@@ -287,10 +288,29 @@ type GameShell = {
     id: string
     sourceVillageId: string
     targetVillageId: string
+    sourceVillageName: string
+    targetVillageName: string
     unitType: string
     unitCount: number
     mission: string
     arrivesAt: string
+    lootWood: number
+    lootClay: number
+    lootIron: number
+  }[]
+  reports: {
+    id: string
+    attackerVillageName: string
+    defenderVillageName: string
+    unitType: string
+    attackerSent: number
+    attackerSurvivors: number
+    defenderSurvivors: number
+    lootWood: number
+    lootClay: number
+    lootIron: number
+    outcome: string
+    createdAt: string
   }[]
   buildQueue: {
     id: string
@@ -307,6 +327,8 @@ type GameShell = {
     troops: number
   }[]
 }
+
+let shellTicker: number | null = null
 
 function startPhaser(
   target: HTMLElement,
@@ -424,6 +446,11 @@ function startPhaser(
 
 async function mountGameShell() {
   try {
+    if (shellTicker !== null) {
+      window.clearInterval(shellTicker)
+      shellTicker = null
+    }
+
     let chunkX = 0
     let chunkY = 0
     const me = await api('/api/auth/me')
@@ -438,6 +465,7 @@ async function mountGameShell() {
 
     const chunkSize = 16
     let shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
+    let serverNowMs = Date.parse(shell.serverTimeUtc) || Date.now()
     let selectedVillageId = shell.villages[0]?.id ?? null
     const initialChunk = getInitialChunk({
       villages: shell.villages,
@@ -450,6 +478,7 @@ async function mountGameShell() {
       chunkX = initialChunk.chunkX
       chunkY = initialChunk.chunkY
       shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
+      serverNowMs = Date.parse(shell.serverTimeUtc) || Date.now()
     }
 
     const adminPanel = auth.isAdmin ? `
@@ -495,7 +524,13 @@ async function mountGameShell() {
         </aside>
 
         <main class="p-4 sm:p-5">
-          <section class="medieval-panel p-4 sm:p-5">
+          <section class="medieval-panel p-4 sm:p-5 mb-4">
+            <div class="flex gap-2">
+              <button id="view-map" class="btn btn-primary">Map View</button>
+              <button id="view-village" class="btn btn-secondary">Village View</button>
+            </div>
+          </section>
+          <section id="map-section" class="medieval-panel p-4 sm:p-5">
             <div class="flex items-center justify-between gap-2 mb-3">
               <h2 class="fantasy-title text-lg sm:text-xl">War Room</h2>
               <span class="status-badge badge-approved">Live Tick Enabled</span>
@@ -509,7 +544,7 @@ async function mountGameShell() {
             </div>
             <div id="phaser-root" class="canvas-shell"></div>
           </section>
-          <section class="medieval-panel mt-4 p-4">
+          <section id="village-section" class="medieval-panel mt-4 p-4">
             <h3 class="fantasy-title text-lg font-semibold mb-3">Village Management</h3>
             <div id="village-details"></div>
           </section>
@@ -520,6 +555,10 @@ async function mountGameShell() {
           <section class="medieval-panel mt-4 p-4">
             <h3 class="fantasy-title text-lg font-semibold mb-3">Build Queue</h3>
             <div id="build-queue-list"></div>
+          </section>
+          <section class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Battle Reports</h3>
+            <div id="report-list"></div>
           </section>
           ${adminPanel}
         </main>
@@ -552,6 +591,10 @@ async function mountGameShell() {
 
     document.getElementById('logout')!.addEventListener('click', async () => {
       try { await api('/api/auth/logout', 'POST') } catch {}
+      if (shellTicker !== null) {
+        window.clearInterval(shellTicker)
+        shellTicker = null
+      }
       clearAuth()
       location.hash = '#login'
       toast('Logged out of the realm.', 'info')
@@ -561,8 +604,12 @@ async function mountGameShell() {
     const villageDetailsHost = document.getElementById('village-details')!
     const movementListHost = document.getElementById('movement-list')!
     const buildQueueHost = document.getElementById('build-queue-list')!
+    const reportListHost = document.getElementById('report-list')!
     const phaserRoot = document.getElementById('phaser-root')!
+    const mapSection = document.getElementById('map-section')!
+    const villageSection = document.getElementById('village-section')!
     let phaserGame: Phaser.Game | null = null
+    let activeView: 'map' | 'village' = 'map'
 
     function renderVillageDetails() {
       const selected = getSelectedVillage(shell.villages, selectedVillageId)
@@ -645,22 +692,29 @@ async function mountGameShell() {
         villageDetailsHost.innerHTML += `
           <div class="mt-4">
             <h4 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Attack Target</h4>
-            <div class="flex gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
               <select id="attack-target" class="input-field">
                 ${shell.visibleVillages.map(v => `<option value="${v.id}">${v.name} (${v.x}|${v.y}) • ${v.troops} troops</option>`).join('')}
               </select>
-              <button id="send-attack" class="btn btn-danger">Send 5 Spearmen</button>
+              <select id="attack-unit" class="input-field">
+                <option value="Spearman">Spearman (${selected.troops.spearmen})</option>
+                <option value="Swordsman">Swordsman (${selected.troops.swordsmen})</option>
+              </select>
+              <input id="attack-count" class="input-field" type="number" min="1" value="5" />
+              <button id="send-attack" class="btn btn-danger">Send Attack</button>
             </div>
           </div>`
 
         document.getElementById('send-attack')?.addEventListener('click', async () => {
           const targetVillageId = (document.getElementById('attack-target') as HTMLSelectElement).value
+          const unitType = (document.getElementById('attack-unit') as HTMLSelectElement).value
+          const unitCount = Number((document.getElementById('attack-count') as HTMLInputElement).value || '0')
           try {
             await api('/api/game/movements/attack', 'POST', {
               sourceVillageId: selected.id,
               targetVillageId,
-              unitType: 'Spearman',
-              unitCount: 5
+              unitType,
+              unitCount
             })
             toast('Attack launched.', 'success')
             await mountGameShell()
@@ -679,8 +733,8 @@ async function mountGameShell() {
 
       movementListHost.innerHTML = shell.movements.map((m) => `
         <div class="nav-item mb-2 text-sm">
-          <span>${m.unitCount} ${m.unitType} → ${m.mission}</span>
-          <span>${new Date(m.arrivesAt).toLocaleTimeString()}</span>
+          <span>${m.mission.toUpperCase()} ${m.unitCount} ${m.unitType} ${m.sourceVillageName} → ${m.targetVillageName}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(m.arrivesAt), serverNowMs))} ${m.lootWood + m.lootClay + m.lootIron > 0 ? `(+${m.lootWood}/${m.lootClay}/${m.lootIron})` : ''}</span>
         </div>
       `).join('')
     }
@@ -694,9 +748,28 @@ async function mountGameShell() {
       buildQueueHost.innerHTML = shell.buildQueue.map((q) => `
         <div class="nav-item mb-2 text-sm">
           <span>${q.buildingType}</span>
-          <span>${new Date(q.completesAt).toLocaleTimeString()}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(q.completesAt), serverNowMs))}</span>
         </div>
       `).join('')
+    }
+
+    function renderReports() {
+      if (!shell.reports.length) {
+        reportListHost.innerHTML = '<div class="text-amber-100/80 text-sm">No reports yet.</div>'
+        return
+      }
+
+      reportListHost.innerHTML = shell.reports.map((r) => `
+        <div class="nav-item mb-2 text-sm">
+          <span>[${r.outcome.toUpperCase()}] ${r.attackerVillageName} vs ${r.defenderVillageName} (${r.unitType})</span>
+          <span>${r.attackerSurvivors}/${r.attackerSent} • Loot ${r.lootWood}/${r.lootClay}/${r.lootIron}</span>
+        </div>
+      `).join('')
+    }
+
+    function applyView() {
+      mapSection.style.display = activeView === 'map' ? '' : 'none'
+      villageSection.style.display = activeView === 'village' ? '' : 'none'
     }
 
     function renderMap() {
@@ -721,6 +794,7 @@ async function mountGameShell() {
 
     async function reloadShell() {
       shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
+      serverNowMs = Date.parse(shell.serverTimeUtc) || Date.now()
       if (!shell.villages.find(v => v.id === selectedVillageId)) {
         selectedVillageId = shell.villages[0]?.id ?? null
       }
@@ -728,6 +802,7 @@ async function mountGameShell() {
       renderMap()
       renderMovements()
       renderBuildQueue()
+      renderReports()
     }
 
     document.getElementById('chunk-left')!.addEventListener('click', async () => { chunkX = clampChunk(chunkX - 1, Math.floor((shell.world.width - 1) / chunkSize)); await reloadShell() })
@@ -748,12 +823,32 @@ async function mountGameShell() {
       chunkY = homeChunk.chunkY
       await reloadShell()
     })
+    document.getElementById('view-map')!.addEventListener('click', () => {
+      activeView = 'map'
+      applyView()
+    })
+    document.getElementById('view-village')!.addEventListener('click', () => {
+      activeView = 'village'
+      applyView()
+    })
 
     renderVillageDetails()
     renderMap()
     renderMovements()
     renderBuildQueue()
+    renderReports()
+    applyView()
+
+    shellTicker = window.setInterval(() => {
+      serverNowMs += 1000
+      renderMovements()
+      renderBuildQueue()
+    }, 1000)
   } catch {
+    if (shellTicker !== null) {
+      window.clearInterval(shellTicker)
+      shellTicker = null
+    }
     clearAuth()
     location.hash = '#login'
     toast('Session expired. Please log in again.', 'error')

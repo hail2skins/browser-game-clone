@@ -39,3 +39,14 @@ export function getInitialChunk<T extends VillageSummary>(input: InitialChunkInp
     chunkY: clampChunk(raw.chunkY, maxChunkY)
   }
 }
+
+export function secondsUntil(targetTimestampMs: number, nowTimestampMs: number): number {
+  return Math.max(0, Math.floor((targetTimestampMs - nowTimestampMs) / 1000))
+}
+
+export function formatCountdown(totalSeconds: number): string {
+  const clamped = Math.max(0, totalSeconds)
+  const minutes = Math.floor(clamped / 60).toString().padStart(2, '0')
+  const seconds = Math.floor(clamped % 60).toString().padStart(2, '0')
+  return `${minutes}:${seconds}`
+}
