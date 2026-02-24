@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkForVillage, clampChunk, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil } from '../gameShellState'
+import { chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -52,5 +52,23 @@ describe('gameShellState', () => {
   it('formats countdown in mm:ss', () => {
     expect(formatCountdown(5)).toBe('00:05')
     expect(formatCountdown(125)).toBe('02:05')
+  })
+
+  it('filters reports by outcome', () => {
+    const reports = [
+      { id: '1', outcome: 'victory' },
+      { id: '2', outcome: 'defeat' },
+      { id: '3', outcome: 'victory' }
+    ]
+
+    expect(filterReports(reports, 'all')).toHaveLength(3)
+    expect(filterReports(reports, 'victory')).toHaveLength(2)
+    expect(filterReports(reports, 'defeat')).toHaveLength(1)
+  })
+
+  it('estimates attack carry capacity by unit type and count', () => {
+    expect(estimateAttackCarry('Spearman', 4)).toBe(100)
+    expect(estimateAttackCarry('Swordsman', 4)).toBe(60)
+    expect(estimateAttackCarry('Unknown', 4)).toBe(80)
   })
 })

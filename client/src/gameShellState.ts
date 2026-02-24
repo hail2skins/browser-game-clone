@@ -50,3 +50,21 @@ export function formatCountdown(totalSeconds: number): string {
   const seconds = Math.floor(clamped % 60).toString().padStart(2, '0')
   return `${minutes}:${seconds}`
 }
+
+type ReportLike = { outcome: string }
+export type ReportFilter = 'all' | 'victory' | 'defeat'
+
+export function filterReports<T extends ReportLike>(reports: T[], filter: ReportFilter): T[] {
+  if (filter === 'all') return reports
+  return reports.filter(r => r.outcome === filter)
+}
+
+export function estimateAttackCarry(unitType: string, unitCount: number): number {
+  const count = Math.max(0, unitCount)
+  const perUnit = unitType.toLowerCase() === 'spearman'
+    ? 25
+    : unitType.toLowerCase() === 'swordsman'
+      ? 15
+      : 20
+  return perUnit * count
+}
