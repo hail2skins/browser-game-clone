@@ -293,10 +293,12 @@ type GameShell = {
     unitType: string
     unitCount: number
     mission: string
+    status: string
     arrivesAt: string
     lootWood: number
     lootClay: number
     lootIron: number
+    canCancel: boolean
   }[]
   reports: {
     id: string
@@ -752,6 +754,37 @@ async function mountGameShell() {
             toast(err.message || 'Attack failed', 'error')
           }
         })
+
+        villageDetailsHost.innerHTML += `
+          <div class="mt-3">
+            <button id="farm-run" class="btn btn-primary">Farm Run (Top 5 Abandoned)</button>
+          </div>`
+        document.getElementById('farm-run')?.addEventListener('click', async () => {
+          const unitType = attackUnitEl.value
+          const unitCount = Number(attackCountEl.value || '0')
+          const targets = shell.visibleVillages
+            .filter(v => v.kind === 'abandoned')
+            .slice(0, 5)
+            .map(v => v.id)
+
+          if (!targets.length) {
+            toast('No abandoned targets in this chunk.', 'info')
+            return
+          }
+
+          try {
+            const result = await api('/api/game/movements/farm-run', 'POST', {
+              sourceVillageId: selected.id,
+              unitType,
+              unitCount,
+              targetVillageIds: targets
+            })
+            toast(`Farm launched: ${result.launched}/${result.attempted}`, 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Farm run failed', 'error')
+          }
+        })
       }
     }
 
@@ -764,9 +797,21 @@ async function mountGameShell() {
       movementListHost.innerHTML = shell.movements.map((m) => `
         <div class="nav-item mb-2 text-sm">
           <span>${m.mission === 'return' ? 'RETURNING' : 'OUTBOUND'} ${m.unitCount} ${m.unitType} ${m.sourceVillageName} → ${m.targetVillageName}</span>
-          <span>${formatCountdown(secondsUntil(Date.parse(m.arrivesAt), serverNowMs))} ${m.lootWood + m.lootClay + m.lootIron > 0 ? `(+${m.lootWood}/${m.lootClay}/${m.lootIron})` : ''}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(m.arrivesAt), serverNowMs))} ${m.lootWood + m.lootClay + m.lootIron > 0 ? `(+${m.lootWood}/${m.lootClay}/${m.lootIron})` : ''} ${m.canCancel ? `<button class="btn btn-secondary cancel-move" data-movement-id="${m.id}">Cancel</button>` : ''}</span>
         </div>
       `).join('')
+
+      movementListHost.querySelectorAll<HTMLButtonElement>('.cancel-move').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            await api(`/api/game/movements/${btn.dataset.movementId}/cancel`, 'POST')
+            toast('Command canceled and troops returned.', 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Cancel failed', 'error')
+          }
+        })
+      })
     }
 
     function renderBuildQueue() {

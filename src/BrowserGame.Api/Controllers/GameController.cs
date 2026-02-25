@@ -170,10 +170,12 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 m.UnitType,
                 m.UnitCount,
                 m.Mission,
+                m.Status,
                 m.ArrivesAt,
                 m.LootWood,
                 m.LootClay,
-                m.LootIron
+                m.LootIron,
+                canCancel = m.Mission == "attack" && m.SourceVillage != null && m.SourceVillage.UserId == userId
             }),
             reports = reports.Select(r => new
             {
@@ -313,26 +315,8 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         if (target is null)
             return NotFound("Target village not found.");
 
-        if (!worldService.TryDispatchUnits(source, unitType, request.UnitCount))
+        if (!TryLaunchAttack(source, target, unitType, request.UnitCount, DateTime.UtcNow, out var arrival))
             return BadRequest("Not enough units in source village.");
-
-        var now = DateTime.UtcNow;
-        var arrival = worldService.GetMovementArrival(now, source, target, unitType);
-
-        db.TroopMovements.Add(new TroopMovement
-        {
-            SourceVillageId = source.Id,
-            TargetVillageId = target.Id,
-            UnitType = unitType.ToString().ToLowerInvariant(),
-            UnitCount = request.UnitCount,
-            Mission = "attack",
-            Status = "outbound",
-            DepartedAt = now,
-            ArrivesAt = arrival,
-            LootWood = 0,
-            LootClay = 0,
-            LootIron = 0
-        });
 
         await db.SaveChangesAsync();
 
@@ -341,6 +325,83 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             message = "Attack launched.",
             arrivesAt = arrival
         });
+    }
+
+    [HttpPost("movements/farm-run")]
+    public async Task<IActionResult> FarmRun(FarmRunRequest request)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        if (!Enum.TryParse<UnitType>(request.UnitType, ignoreCase: true, out var unitType))
+            return BadRequest("Unknown unit type.");
+
+        if (request.UnitCount <= 0 || request.TargetVillageIds.Count == 0)
+            return BadRequest("Provide positive unit count and at least one target.");
+
+        var source = await db.Villages.FirstOrDefaultAsync(v => v.Id == request.SourceVillageId && v.UserId == userId);
+        if (source is null)
+            return NotFound("Source village not found.");
+
+        var targets = await db.Villages
+            .Where(v => request.TargetVillageIds.Contains(v.Id) && v.Id != source.Id)
+            .ToListAsync();
+
+        if (targets.Count == 0)
+            return BadRequest("No valid targets.");
+
+        var now = DateTime.UtcNow;
+        var launched = 0;
+
+        foreach (var target in targets)
+        {
+            if (TryLaunchAttack(source, target, unitType, request.UnitCount, now, out _))
+            {
+                launched++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { launched, attempted = targets.Count });
+    }
+
+    [HttpPost("movements/{movementId:guid}/cancel")]
+    public async Task<IActionResult> CancelMovement(Guid movementId)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var movement = await db.TroopMovements
+            .Include(m => m.SourceVillage)
+            .FirstOrDefaultAsync(m => m.Id == movementId);
+
+        if (movement is null)
+            return NotFound();
+
+        if (movement.Status != "outbound" || movement.Mission != "attack")
+            return BadRequest("Only outbound attacks can be canceled.");
+
+        if (movement.SourceVillage is null || movement.SourceVillage.UserId != userId)
+            return Forbid();
+
+        if (!Enum.TryParse<UnitType>(movement.UnitType, true, out var unitType))
+            return BadRequest("Unknown movement unit type.");
+
+        worldService.ApplyReturnHome(
+            movement.SourceVillage,
+            unitType,
+            movement.UnitCount,
+            new ResourceCost(0, 0, 0));
+
+        movement.Status = "canceled";
+        movement.ResolvedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return Ok(new { movement.Id, movement.Status });
     }
 
     private async Task ResolveDueMovements(DateTime now)
@@ -464,6 +525,31 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
     {
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(userIdClaim, out userId);
+    }
+
+    private bool TryLaunchAttack(Village source, Village target, UnitType unitType, int unitCount, DateTime now, out DateTime arrival)
+    {
+        arrival = now;
+        if (!worldService.TryDispatchUnits(source, unitType, unitCount))
+            return false;
+
+        arrival = worldService.GetMovementArrival(now, source, target, unitType);
+        db.TroopMovements.Add(new TroopMovement
+        {
+            SourceVillageId = source.Id,
+            TargetVillageId = target.Id,
+            UnitType = unitType.ToString().ToLowerInvariant(),
+            UnitCount = unitCount,
+            Mission = "attack",
+            Status = "outbound",
+            DepartedAt = now,
+            ArrivesAt = arrival,
+            LootWood = 0,
+            LootClay = 0,
+            LootIron = 0
+        });
+
+        return true;
     }
 
     private async Task EnsureBarbarianVillages()
