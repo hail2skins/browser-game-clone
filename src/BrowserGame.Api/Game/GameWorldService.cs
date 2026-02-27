@@ -4,7 +4,7 @@ namespace api.Game;
 
 public class GameWorldService
 {
-    public DateTime GetMovementArrival(DateTime departedAtUtc, Village source, Village target, UnitType unitType)
+    public int GetTravelDurationSeconds(Village source, Village target, UnitType unitType)
     {
         var distance = Distance((source.X, source.Y), (target.X, target.Y));
         var secondsPerTile = unitType switch
@@ -14,7 +14,12 @@ public class GameWorldService
             _ => 360
         };
 
-        var travelSeconds = (int)Math.Ceiling(distance * secondsPerTile);
+        return (int)Math.Ceiling(distance * secondsPerTile);
+    }
+
+    public DateTime GetMovementArrival(DateTime departedAtUtc, Village source, Village target, UnitType unitType)
+    {
+        var travelSeconds = GetTravelDurationSeconds(source, target, unitType);
         return departedAtUtc.AddSeconds(travelSeconds);
     }
 

@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil, type ReportFilter } from './gameShellState'
+import { clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -295,6 +295,8 @@ type GameShell = {
     mission: string
     status: string
     arrivesAt: string
+    distanceTiles: number
+    durationSeconds: number
     lootWood: number
     lootClay: number
     lootIron: number
@@ -312,6 +314,7 @@ type GameShell = {
     lootClay: number
     lootIron: number
     outcome: string
+    perspective: 'attack' | 'defense'
     createdAt: string
   }[]
   buildQueue: {
@@ -567,6 +570,11 @@ async function mountGameShell() {
                 <button id="report-filter-defeat" class="btn btn-secondary">Defeats</button>
               </div>
             </div>
+            <div class="flex gap-1 mb-3">
+              <button id="report-perspective-all" class="btn btn-secondary">All Commands</button>
+              <button id="report-perspective-attack" class="btn btn-secondary">My Attacks</button>
+              <button id="report-perspective-defense" class="btn btn-secondary">On Me</button>
+            </div>
             <div id="report-list"></div>
             <div id="report-detail" class="mt-3"></div>
           </section>
@@ -621,7 +629,7 @@ async function mountGameShell() {
     const villageSection = document.getElementById('village-section')!
     let phaserGame: Phaser.Game | null = null
     let activeView: 'map' | 'village' = 'map'
-    let reportFilter: ReportFilter = 'all'
+    let reportFilter: ReportFilter = { outcome: 'all', perspective: 'all' }
     let selectedReportId: string | null = null
 
     function renderVillageDetails() {
@@ -797,7 +805,7 @@ async function mountGameShell() {
       movementListHost.innerHTML = shell.movements.map((m) => `
         <div class="nav-item mb-2 text-sm">
           <span>${m.mission === 'return' ? 'RETURNING' : 'OUTBOUND'} ${m.unitCount} ${m.unitType} ${m.sourceVillageName} → ${m.targetVillageName}</span>
-          <span>${formatCountdown(secondsUntil(Date.parse(m.arrivesAt), serverNowMs))} ${m.lootWood + m.lootClay + m.lootIron > 0 ? `(+${m.lootWood}/${m.lootClay}/${m.lootIron})` : ''} ${m.canCancel ? `<button class="btn btn-secondary cancel-move" data-movement-id="${m.id}">Cancel</button>` : ''}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(m.arrivesAt), serverNowMs))} • ${m.distanceTiles.toFixed(1)}t • ${formatCountdown(m.durationSeconds)} ${m.lootWood + m.lootClay + m.lootIron > 0 ? `(+${m.lootWood}/${m.lootClay}/${m.lootIron})` : ''} ${m.canCancel ? `<button class="btn btn-secondary cancel-move" data-movement-id="${m.id}">Cancel</button>` : ''}</span>
         </div>
       `).join('')
 
@@ -837,7 +845,7 @@ async function mountGameShell() {
 
       reportListHost.innerHTML = reports.map((r) => `
         <div class="nav-item mb-2 text-sm">
-          <span>[${r.outcome.toUpperCase()}] ${r.attackerVillageName} vs ${r.defenderVillageName} (${r.unitType})</span>
+          <span>[${r.outcome.toUpperCase()}] [${r.perspective.toUpperCase()}] ${r.attackerVillageName} vs ${r.defenderVillageName} (${r.unitType})</span>
           <span>${r.attackerSurvivors}/${r.attackerSent} • Loot ${r.lootWood}/${r.lootClay}/${r.lootIron} <button class="btn btn-secondary report-open" data-report-id="${r.id}">View</button></span>
         </div>
       `).join('')
@@ -861,6 +869,7 @@ async function mountGameShell() {
         <div class="medieval-panel p-3 text-sm">
           <div class="font-semibold mb-2">Report Detail</div>
           <div class="mb-1">Outcome: ${report.outcome.toUpperCase()}</div>
+          <div class="mb-1">Command Type: ${report.perspective.toUpperCase()}</div>
           <div class="mb-1">Attacker: ${report.attackerVillageName}</div>
           <div class="mb-1">Defender: ${report.defenderVillageName}</div>
           <div class="mb-1">Unit: ${report.unitType}</div>
@@ -936,17 +945,33 @@ async function mountGameShell() {
       activeView = 'village'
       applyView()
     })
-    document.getElementById('report-filter-all')!.addEventListener('click', () => {
-      reportFilter = 'all'
+    function setOutcomeFilter(value: ReportOutcomeFilter) {
+      reportFilter = { ...reportFilter, outcome: value }
       renderReports()
+    }
+
+    function setPerspectiveFilter(value: ReportPerspectiveFilter) {
+      reportFilter = { ...reportFilter, perspective: value }
+      renderReports()
+    }
+
+    document.getElementById('report-filter-all')!.addEventListener('click', () => {
+      setOutcomeFilter('all')
     })
     document.getElementById('report-filter-victory')!.addEventListener('click', () => {
-      reportFilter = 'victory'
-      renderReports()
+      setOutcomeFilter('victory')
     })
     document.getElementById('report-filter-defeat')!.addEventListener('click', () => {
-      reportFilter = 'defeat'
-      renderReports()
+      setOutcomeFilter('defeat')
+    })
+    document.getElementById('report-perspective-all')!.addEventListener('click', () => {
+      setPerspectiveFilter('all')
+    })
+    document.getElementById('report-perspective-attack')!.addEventListener('click', () => {
+      setPerspectiveFilter('attack')
+    })
+    document.getElementById('report-perspective-defense')!.addEventListener('click', () => {
+      setPerspectiveFilter('defense')
     })
 
     renderVillageDetails()

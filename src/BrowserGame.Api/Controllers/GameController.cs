@@ -172,6 +172,14 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 m.Mission,
                 m.Status,
                 m.ArrivesAt,
+                distanceTiles = m.SourceVillage != null && m.TargetVillage != null
+                    ? Math.Round(Math.Sqrt(
+                        Math.Pow(m.SourceVillage.X - m.TargetVillage.X, 2) +
+                        Math.Pow(m.SourceVillage.Y - m.TargetVillage.Y, 2)), 2)
+                    : 0,
+                durationSeconds = m.SourceVillage != null && m.TargetVillage != null && Enum.TryParse<UnitType>(m.UnitType, true, out var movementUnitType)
+                    ? worldService.GetTravelDurationSeconds(m.SourceVillage, m.TargetVillage, movementUnitType)
+                    : 0,
                 m.LootWood,
                 m.LootClay,
                 m.LootIron,
@@ -190,6 +198,7 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 r.LootClay,
                 r.LootIron,
                 r.Outcome,
+                perspective = r.AttackerUserId == userId ? "attack" : "defense",
                 r.CreatedAt
             }),
             buildQueue = buildQueue.Select(q => new

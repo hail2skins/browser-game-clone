@@ -51,12 +51,17 @@ export function formatCountdown(totalSeconds: number): string {
   return `${minutes}:${seconds}`
 }
 
-type ReportLike = { outcome: string }
-export type ReportFilter = 'all' | 'victory' | 'defeat'
+type ReportLike = { outcome: string; perspective: string }
+export type ReportOutcomeFilter = 'all' | 'victory' | 'defeat'
+export type ReportPerspectiveFilter = 'all' | 'attack' | 'defense'
+export type ReportFilter = { outcome: ReportOutcomeFilter; perspective: ReportPerspectiveFilter }
 
 export function filterReports<T extends ReportLike>(reports: T[], filter: ReportFilter): T[] {
-  if (filter === 'all') return reports
-  return reports.filter(r => r.outcome === filter)
+  return reports.filter((r) => {
+    const outcomeMatches = filter.outcome === 'all' || r.outcome === filter.outcome
+    const perspectiveMatches = filter.perspective === 'all' || r.perspective === filter.perspective
+    return outcomeMatches && perspectiveMatches
+  })
 }
 
 export function estimateAttackCarry(unitType: string, unitCount: number): number {

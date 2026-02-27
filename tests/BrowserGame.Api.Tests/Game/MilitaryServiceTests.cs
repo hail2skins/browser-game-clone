@@ -6,6 +6,20 @@ namespace BrowserGame.Api.Tests.Game;
 public class MilitaryServiceTests
 {
     [Fact]
+    public void GetTravelDurationSeconds_ReturnsExpectedByUnitType()
+    {
+        var sut = new GameWorldService();
+        var source = new Village { X = 10, Y = 10 };
+        var target = new Village { X = 13, Y = 14 };
+
+        var spearSeconds = sut.GetTravelDurationSeconds(source, target, UnitType.Spearman);
+        var swordSeconds = sut.GetTravelDurationSeconds(source, target, UnitType.Swordsman);
+
+        Assert.Equal(1560, spearSeconds);
+        Assert.Equal(1800, swordSeconds);
+    }
+
+    [Fact]
     public void GetMovementArrival_UsesDistanceAndUnitSpeed()
     {
         var sut = new GameWorldService();

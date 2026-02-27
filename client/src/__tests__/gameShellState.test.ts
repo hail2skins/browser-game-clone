@@ -56,14 +56,17 @@ describe('gameShellState', () => {
 
   it('filters reports by outcome', () => {
     const reports = [
-      { id: '1', outcome: 'victory' },
-      { id: '2', outcome: 'defeat' },
-      { id: '3', outcome: 'victory' }
+      { id: '1', outcome: 'victory', perspective: 'attack' },
+      { id: '2', outcome: 'defeat', perspective: 'defense' },
+      { id: '3', outcome: 'victory', perspective: 'defense' }
     ]
 
-    expect(filterReports(reports, 'all')).toHaveLength(3)
-    expect(filterReports(reports, 'victory')).toHaveLength(2)
-    expect(filterReports(reports, 'defeat')).toHaveLength(1)
+    expect(filterReports(reports, { outcome: 'all', perspective: 'all' })).toHaveLength(3)
+    expect(filterReports(reports, { outcome: 'victory', perspective: 'all' })).toHaveLength(2)
+    expect(filterReports(reports, { outcome: 'defeat', perspective: 'all' })).toHaveLength(1)
+    expect(filterReports(reports, { outcome: 'all', perspective: 'attack' })).toHaveLength(1)
+    expect(filterReports(reports, { outcome: 'all', perspective: 'defense' })).toHaveLength(2)
+    expect(filterReports(reports, { outcome: 'victory', perspective: 'defense' })).toHaveLength(1)
   })
 
   it('estimates attack carry capacity by unit type and count', () => {
