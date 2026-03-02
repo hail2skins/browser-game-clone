@@ -59,6 +59,76 @@ public class GameWorldService
         return true;
     }
 
+    public bool TryQueueRecruitment(
+        Village village,
+        UnitType unitType,
+        int count,
+        DateTime nowUtc,
+        int queueDepth,
+        out DateTime completesAtUtc)
+    {
+        completesAtUtc = nowUtc;
+        if (count <= 0)
+        {
+            return false;
+        }
+
+        TickResources(village, nowUtc);
+
+        var (woodCost, clayCost, ironCost) = RecruitmentCost(unitType);
+        var totalWood = woodCost * count;
+        var totalClay = clayCost * count;
+        var totalIron = ironCost * count;
+
+        if (village.Wood < totalWood || village.Clay < totalClay || village.Iron < totalIron)
+        {
+            return false;
+        }
+
+        village.Wood -= totalWood;
+        village.Clay -= totalClay;
+        village.Iron -= totalIron;
+
+        var totalSeconds = GetRecruitmentDurationSeconds(unitType, count, queueDepth);
+        completesAtUtc = nowUtc.AddSeconds(totalSeconds);
+        return true;
+    }
+
+    public int GetRecruitmentDurationSeconds(UnitType unitType, int count, int queueDepth)
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        var secondsPerUnit = unitType switch
+        {
+            UnitType.Spearman => 75,
+            UnitType.Swordsman => 95,
+            _ => 90
+        };
+        var queuePenalty = Math.Max(0, queueDepth) * 15;
+        return (count * secondsPerUnit) + queuePenalty;
+    }
+
+    public void CompleteQueuedRecruitment(Village village, UnitType unitType, int count)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+
+        switch (unitType)
+        {
+            case UnitType.Spearman:
+                village.Spearmen += count;
+                break;
+            case UnitType.Swordsman:
+                village.Swordsmen += count;
+                break;
+        }
+    }
+
     public bool TryDispatchUnits(Village village, UnitType unitType, int count)
     {
         if (count <= 0)

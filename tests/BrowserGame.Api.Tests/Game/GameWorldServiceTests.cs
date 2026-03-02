@@ -281,6 +281,43 @@ public class GameWorldServiceTests
         Assert.Equal(2, village.Swordsmen);
     }
 
+    [Fact]
+    public void QueueRecruitment_WhenAffordable_ConsumesResourcesAndSetsCompletionTime()
+    {
+        var sut = new GameWorldService();
+        var now = new DateTime(2026, 2, 22, 10, 0, 0, DateTimeKind.Utc);
+        var village = new Village
+        {
+            Wood = 1000,
+            Clay = 1000,
+            Iron = 1000
+        };
+
+        var queued = sut.TryQueueRecruitment(village, UnitType.Spearman, count: 4, now, queueDepth: 0, out var completesAt);
+
+        Assert.True(queued);
+        Assert.Equal(now.AddSeconds(300), completesAt);
+        Assert.Equal(800, village.Wood);
+        Assert.Equal(880, village.Clay);
+        Assert.Equal(960, village.Iron);
+    }
+
+    [Fact]
+    public void CompleteQueuedRecruitment_AddsUnitsToVillage()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            Spearmen = 2,
+            Swordsmen = 3
+        };
+
+        sut.CompleteQueuedRecruitment(village, UnitType.Swordsman, count: 4);
+
+        Assert.Equal(2, village.Spearmen);
+        Assert.Equal(7, village.Swordsmen);
+    }
+
     private static double Distance((int X, int Y) first, (int X, int Y) second)
     {
         var dx = first.X - second.X;

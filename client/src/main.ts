@@ -323,6 +323,13 @@ type GameShell = {
     buildingType: string
     completesAt: string
   }[]
+  recruitmentQueue: {
+    id: string
+    villageId: string
+    unitType: string
+    count: number
+    completesAt: string
+  }[]
   visibleVillages: {
     id: string
     name: string
@@ -562,6 +569,10 @@ async function mountGameShell() {
             <div id="build-queue-list"></div>
           </section>
           <section class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Recruitment Queue</h3>
+            <div id="recruit-queue-list"></div>
+          </section>
+          <section class="medieval-panel mt-4 p-4">
             <div class="flex items-center justify-between mb-3 gap-2">
               <h3 class="fantasy-title text-lg font-semibold">Battle Reports</h3>
               <div class="flex gap-1">
@@ -622,6 +633,7 @@ async function mountGameShell() {
     const villageDetailsHost = document.getElementById('village-details')!
     const movementListHost = document.getElementById('movement-list')!
     const buildQueueHost = document.getElementById('build-queue-list')!
+    const recruitQueueHost = document.getElementById('recruit-queue-list')!
     const reportListHost = document.getElementById('report-list')!
     const reportDetailHost = document.getElementById('report-detail')!
     const phaserRoot = document.getElementById('phaser-root')!
@@ -664,9 +676,14 @@ async function mountGameShell() {
           <div class="nav-item"><span>Spearmen</span><span>${selected.troops.spearmen}</span></div>
           <div class="nav-item"><span>Swordsmen</span><span>${selected.troops.swordsmen}</span></div>
         </div>
-        <div class="flex gap-2 mb-4">
-          <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Spearman">Recruit Spearman</button>
-          <button class="btn btn-secondary recruit-btn" data-village-id="${selected.id}" data-unit="Swordsman">Recruit Swordsman</button>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-4">
+          <select id="recruit-unit" class="input-field">
+            <option value="Spearman">Spearman</option>
+            <option value="Swordsman">Swordsman</option>
+          </select>
+          <input id="recruit-count" class="input-field" type="number" min="1" value="1" />
+          <button class="btn btn-secondary recruit-now-btn" data-village-id="${selected.id}">Recruit Now</button>
+          <button class="btn btn-primary recruit-queue-btn" data-village-id="${selected.id}">Queue Recruit</button>
         </div>
         <div class="space-y-2">
           <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main}) [${selected.upgradeCosts.main.wood}/${selected.upgradeCosts.main.clay}/${selected.upgradeCosts.main.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="MainBuilding">Queue</button></div>
@@ -691,22 +708,41 @@ async function mountGameShell() {
         })
       })
 
-      villageDetailsHost.querySelectorAll<HTMLButtonElement>('.recruit-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          btn.disabled = true
-          try {
-            await api(`/api/game/villages/${btn.dataset.villageId}/recruit`, 'POST', {
-              unitType: btn.dataset.unit,
-              count: 1
-            })
-            toast('Unit recruited.', 'success')
-            await mountGameShell()
-          } catch (err: any) {
-            toast(err.message || 'Recruit failed', 'error')
-          } finally {
-            btn.disabled = false
-          }
-        })
+      const recruitUnitEl = document.getElementById('recruit-unit') as HTMLSelectElement
+      const recruitCountEl = document.getElementById('recruit-count') as HTMLInputElement
+      const queueBtn = villageDetailsHost.querySelector<HTMLButtonElement>('.recruit-queue-btn')
+      const nowBtn = villageDetailsHost.querySelector<HTMLButtonElement>('.recruit-now-btn')
+
+      queueBtn?.addEventListener('click', async () => {
+        queueBtn.disabled = true
+        try {
+          await api(`/api/game/villages/${selected.id}/recruit/queue`, 'POST', {
+            unitType: recruitUnitEl.value,
+            count: Number(recruitCountEl.value || '0')
+          })
+          toast('Recruitment queued.', 'success')
+          await mountGameShell()
+        } catch (err: any) {
+          toast(err.message || 'Queue recruit failed', 'error')
+        } finally {
+          queueBtn.disabled = false
+        }
+      })
+
+      nowBtn?.addEventListener('click', async () => {
+        nowBtn.disabled = true
+        try {
+          await api(`/api/game/villages/${selected.id}/recruit`, 'POST', {
+            unitType: recruitUnitEl.value,
+            count: Number(recruitCountEl.value || '0')
+          })
+          toast('Unit recruited.', 'success')
+          await mountGameShell()
+        } catch (err: any) {
+          toast(err.message || 'Recruit failed', 'error')
+        } finally {
+          nowBtn.disabled = false
+        }
       })
 
       if (shell.visibleVillages.length) {
@@ -836,6 +872,20 @@ async function mountGameShell() {
       `).join('')
     }
 
+    function renderRecruitQueue() {
+      if (!shell.recruitmentQueue.length) {
+        recruitQueueHost.innerHTML = '<div class="text-amber-100/80 text-sm">Queue empty.</div>'
+        return
+      }
+
+      recruitQueueHost.innerHTML = shell.recruitmentQueue.map((q) => `
+        <div class="nav-item mb-2 text-sm">
+          <span>${q.unitType} × ${q.count}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(q.completesAt), serverNowMs))}</span>
+        </div>
+      `).join('')
+    }
+
     function renderReports() {
       const reports = filterReports(shell.reports, reportFilter)
       if (!reports.length) {
@@ -915,6 +965,7 @@ async function mountGameShell() {
       renderMap()
       renderMovements()
       renderBuildQueue()
+      renderRecruitQueue()
       renderReports()
       renderReportDetail()
     }
@@ -978,6 +1029,7 @@ async function mountGameShell() {
     renderMap()
     renderMovements()
     renderBuildQueue()
+    renderRecruitQueue()
     renderReports()
     renderReportDetail()
     applyView()
@@ -986,6 +1038,7 @@ async function mountGameShell() {
       serverNowMs += 1000
       renderMovements()
       renderBuildQueue()
+      renderRecruitQueue()
     }, 1000)
   } catch {
     if (shellTicker !== null) {

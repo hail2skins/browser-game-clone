@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WorldTile> WorldTiles => Set<WorldTile>();
     public DbSet<TroopMovement> TroopMovements => Set<TroopMovement>();
     public DbSet<BuildingQueueItem> BuildingQueueItems => Set<BuildingQueueItem>();
+    public DbSet<UnitQueueItem> UnitQueueItems => Set<UnitQueueItem>();
     public DbSet<BattleReport> BattleReports => Set<BattleReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -73,6 +74,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<BuildingQueueItem>()
+            .HasIndex(q => new { q.VillageId, q.CompletesAt });
+
+        modelBuilder.Entity<UnitQueueItem>()
+            .HasOne(q => q.Village)
+            .WithMany()
+            .HasForeignKey(q => q.VillageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UnitQueueItem>()
             .HasIndex(q => new { q.VillageId, q.CompletesAt });
 
         modelBuilder.Entity<BattleReport>()
