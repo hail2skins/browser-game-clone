@@ -318,6 +318,36 @@ public class GameWorldServiceTests
         Assert.Equal(7, village.Swordsmen);
     }
 
+    [Fact]
+    public void GetRecruitmentCost_ReturnsScaledCostByUnitAndCount()
+    {
+        var sut = new GameWorldService();
+
+        var cost = sut.GetRecruitmentCost(UnitType.Swordsman, count: 3);
+
+        Assert.Equal(90, cost.Wood);
+        Assert.Equal(90, cost.Clay);
+        Assert.Equal(210, cost.Iron);
+    }
+
+    [Fact]
+    public void ApplyRecruitmentRefund_AddsResourcesBackToVillage()
+    {
+        var sut = new GameWorldService();
+        var village = new Village
+        {
+            Wood = 100,
+            Clay = 80,
+            Iron = 60
+        };
+
+        sut.ApplyRecruitmentRefund(village, new ResourceCost(50, 30, 10));
+
+        Assert.Equal(150, village.Wood);
+        Assert.Equal(110, village.Clay);
+        Assert.Equal(70, village.Iron);
+    }
+
     private static double Distance((int X, int Y) first, (int X, int Y) second)
     {
         var dx = first.X - second.X;

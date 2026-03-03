@@ -220,7 +220,8 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 q.VillageId,
                 q.UnitType,
                 q.Count,
-                q.CompletesAt
+                q.CompletesAt,
+                canCancel = true
             }),
             visibleVillages = visibleOthers
         });
@@ -347,6 +348,42 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
         await db.SaveChangesAsync();
 
         return Ok(new { villageId, unitType = unitType.ToString(), count = request.Count, completesAt });
+    }
+
+    [HttpPost("recruitment/{queueItemId:guid}/cancel")]
+    public async Task<IActionResult> CancelRecruitmentQueueItem(Guid queueItemId)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var queueItem = await db.UnitQueueItems
+            .Include(q => q.Village)
+            .FirstOrDefaultAsync(q => q.Id == queueItemId);
+
+        if (queueItem is null)
+            return NotFound();
+
+        if (queueItem.CompletedAt != null)
+            return BadRequest("Recruitment item is already completed.");
+
+        if (queueItem.Village is null || queueItem.Village.UserId != userId)
+            return Forbid();
+
+        if (!Enum.TryParse<UnitType>(queueItem.UnitType, true, out var unitType))
+            return BadRequest("Unknown queued unit type.");
+
+        var refund = worldService.GetRecruitmentCost(unitType, queueItem.Count);
+        worldService.ApplyRecruitmentRefund(queueItem.Village, refund);
+        queueItem.CompletedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            queueItem.Id,
+            queueItem.CompletedAt,
+            refunded = new { refund.Wood, refund.Clay, refund.Iron }
+        });
     }
 
     [HttpPost("movements/attack")]

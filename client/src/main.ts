@@ -329,6 +329,7 @@ type GameShell = {
     unitType: string
     count: number
     completesAt: string
+    canCancel: boolean
   }[]
   visibleVillages: {
     id: string
@@ -881,9 +882,21 @@ async function mountGameShell() {
       recruitQueueHost.innerHTML = shell.recruitmentQueue.map((q) => `
         <div class="nav-item mb-2 text-sm">
           <span>${q.unitType} × ${q.count}</span>
-          <span>${formatCountdown(secondsUntil(Date.parse(q.completesAt), serverNowMs))}</span>
+          <span>${formatCountdown(secondsUntil(Date.parse(q.completesAt), serverNowMs))} ${q.canCancel ? `<button class="btn btn-secondary cancel-recruit" data-queue-id="${q.id}">Cancel</button>` : ''}</span>
         </div>
       `).join('')
+
+      recruitQueueHost.querySelectorAll<HTMLButtonElement>('.cancel-recruit').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            const result = await api(`/api/game/recruitment/${btn.dataset.queueId}/cancel`, 'POST')
+            toast(`Recruitment canceled. Refunded ${result.refunded.wood}/${result.refunded.clay}/${result.refunded.iron}.`, 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Cancel recruit failed', 'error')
+          }
+        })
+      })
     }
 
     function renderReports() {

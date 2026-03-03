@@ -30,10 +30,10 @@ public class GameWorldService
             return false;
         }
 
-        var (woodCost, clayCost, ironCost) = RecruitmentCost(unitType);
-        var totalWood = woodCost * count;
-        var totalClay = clayCost * count;
-        var totalIron = ironCost * count;
+        var cost = GetRecruitmentCost(unitType, count);
+        var totalWood = cost.Wood;
+        var totalClay = cost.Clay;
+        var totalIron = cost.Iron;
 
         if (village.Wood < totalWood || village.Clay < totalClay || village.Iron < totalIron)
         {
@@ -75,10 +75,10 @@ public class GameWorldService
 
         TickResources(village, nowUtc);
 
-        var (woodCost, clayCost, ironCost) = RecruitmentCost(unitType);
-        var totalWood = woodCost * count;
-        var totalClay = clayCost * count;
-        var totalIron = ironCost * count;
+        var cost = GetRecruitmentCost(unitType, count);
+        var totalWood = cost.Wood;
+        var totalClay = cost.Clay;
+        var totalIron = cost.Iron;
 
         if (village.Wood < totalWood || village.Clay < totalClay || village.Iron < totalIron)
         {
@@ -109,6 +109,24 @@ public class GameWorldService
         };
         var queuePenalty = Math.Max(0, queueDepth) * 15;
         return (count * secondsPerUnit) + queuePenalty;
+    }
+
+    public ResourceCost GetRecruitmentCost(UnitType unitType, int count)
+    {
+        if (count <= 0)
+        {
+            return new ResourceCost(0, 0, 0);
+        }
+
+        var (woodCost, clayCost, ironCost) = RecruitmentCost(unitType);
+        return new ResourceCost(woodCost * count, clayCost * count, ironCost * count);
+    }
+
+    public void ApplyRecruitmentRefund(Village village, ResourceCost refund)
+    {
+        village.Wood += refund.Wood;
+        village.Clay += refund.Clay;
+        village.Iron += refund.Iron;
     }
 
     public void CompleteQueuedRecruitment(Village village, UnitType unitType, int count)
