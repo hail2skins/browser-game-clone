@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil } from '../gameShellState'
+import { buildAttackPreview, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -73,5 +73,34 @@ describe('gameShellState', () => {
     expect(estimateAttackCarry('Spearman', 4)).toBe(100)
     expect(estimateAttackCarry('Swordsman', 4)).toBe(60)
     expect(estimateAttackCarry('Unknown', 4)).toBe(80)
+  })
+
+  it('sorts targets by distance from selected village', () => {
+    const targets = [
+      { id: 'far', x: 20, y: 20, name: 'Far', troops: 10, kind: 'abandoned' as const },
+      { id: 'near', x: 12, y: 13, name: 'Near', troops: 4, kind: 'player' as const },
+      { id: 'mid', x: 15, y: 15, name: 'Mid', troops: 6, kind: 'abandoned' as const }
+    ]
+
+    const sorted = getSortedTargets(targets, { id: 'home', x: 10, y: 10 })
+
+    expect(sorted.map(t => t.id)).toEqual(['near', 'mid', 'far'])
+    expect(sorted[0].distanceTiles).toBeCloseTo(3.61, 2)
+  })
+
+  it('builds attack preview with carry, distance, and eta', () => {
+    const preview = buildAttackPreview(
+      { id: 'home', x: 10, y: 10 },
+      { id: 'target', x: 13, y: 14, name: 'Camp', troops: 8, kind: 'abandoned' },
+      'Spearman',
+      4
+    )
+
+    expect(preview).toEqual({
+      distanceTiles: 5,
+      durationSeconds: 1560,
+      estimatedCarry: 100,
+      targetTroops: 8
+    })
   })
 })

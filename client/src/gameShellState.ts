@@ -1,4 +1,5 @@
 export type VillageSummary = { id: string; x: number; y: number }
+export type TargetSummary = { id: string; x: number; y: number; name: string; troops: number; kind: 'abandoned' | 'player' }
 
 export function getSelectedVillage<T extends VillageSummary>(villages: T[], selectedVillageId: string | null): T | null {
   if (!villages.length) return null
@@ -72,4 +73,48 @@ export function estimateAttackCarry(unitType: string, unitCount: number): number
       ? 15
       : 20
   return perUnit * count
+}
+
+export function distanceBetweenTiles(from: VillageSummary, to: VillageSummary): number {
+  const dx = from.x - to.x
+  const dy = from.y - to.y
+  return Math.sqrt((dx * dx) + (dy * dy))
+}
+
+export function getTravelDurationSeconds(unitType: string, distanceTiles: number): number {
+  const secondsPerTile = unitType.toLowerCase() === 'spearman'
+    ? 312
+    : unitType.toLowerCase() === 'swordsman'
+      ? 360
+      : 360
+
+  return Math.ceil(distanceTiles * secondsPerTile)
+}
+
+export function getSortedTargets<T extends TargetSummary>(targets: T[], village: VillageSummary | null): Array<T & { distanceTiles: number }> {
+  if (!village) return targets.map(target => ({ ...target, distanceTiles: 0 }))
+
+  return targets
+    .map(target => ({ ...target, distanceTiles: distanceBetweenTiles(village, target) }))
+    .sort((left, right) => left.distanceTiles - right.distanceTiles)
+}
+
+export function buildAttackPreview(village: VillageSummary | null, target: TargetSummary | null, unitType: string, unitCount: number) {
+  const estimatedCarry = estimateAttackCarry(unitType, unitCount)
+  if (!village || !target) {
+    return {
+      distanceTiles: 0,
+      durationSeconds: 0,
+      estimatedCarry,
+      targetTroops: 0
+    }
+  }
+
+  const distanceTiles = distanceBetweenTiles(village, target)
+  return {
+    distanceTiles,
+    durationSeconds: getTravelDurationSeconds(unitType, distanceTiles),
+    estimatedCarry,
+    targetTroops: target.troops
+  }
 }

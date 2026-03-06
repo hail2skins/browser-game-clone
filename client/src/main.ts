@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
+import { buildAttackPreview, clampChunk, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -347,7 +347,9 @@ function startPhaser(
   target: HTMLElement,
   shell: GameShell,
   selectedVillageId: string | null,
-  onVillageSelected: (villageId: string) => void
+  selectedTargetId: string | null,
+  onVillageSelected: (villageId: string) => void,
+  onTargetSelected: (targetVillageId: string) => void
 ) {
   class GameScene extends Phaser.Scene {
     constructor() { super('GameScene') }
@@ -411,18 +413,55 @@ function startPhaser(
         const relativeX = village.x - chunkOffsetX
         const relativeY = village.y - chunkOffsetY
         if (relativeX < 0 || relativeY < 0 || relativeX >= shell.world.chunkSize || relativeY >= shell.world.chunkSize) return
-        this.add.circle(
+        const isSelected = village.id === selectedTargetId
+        const marker = this.add.circle(
           offsetX + (relativeX * tileSize) + (tileSize / 2),
           offsetY + (relativeY * tileSize) + (tileSize / 2),
-          5,
-          0xe15656
+          isSelected ? 7 : 5,
+          isSelected ? 0xff8f4a : 0xe15656
         )
+        marker.setInteractive({ useHandCursor: true })
+        marker.on('pointerdown', () => onTargetSelected(village.id))
+
+        if (isSelected) {
+          this.add.circle(
+            offsetX + (relativeX * tileSize) + (tileSize / 2),
+            offsetY + (relativeY * tileSize) + (tileSize / 2),
+            10,
+            0x000000,
+            0
+          ).setStrokeStyle(2, 0xffd166, 0.95)
+        }
       })
+
+      const selectedVillage = shell.villages.find(village => village.id === selectedVillageId)
+      const selectedTarget = shell.visibleVillages.find(village => village.id === selectedTargetId)
+      if (selectedVillage && selectedTarget) {
+        const fromX = selectedVillage.x - chunkOffsetX
+        const fromY = selectedVillage.y - chunkOffsetY
+        const toX = selectedTarget.x - chunkOffsetX
+        const toY = selectedTarget.y - chunkOffsetY
+        const inChunk = [fromX, fromY, toX, toY].every(value => value >= 0 && value < shell.world.chunkSize)
+
+        if (inChunk) {
+          const line = this.add.line(
+            0,
+            0,
+            offsetX + (fromX * tileSize) + (tileSize / 2),
+            offsetY + (fromY * tileSize) + (tileSize / 2),
+            offsetX + (toX * tileSize) + (tileSize / 2),
+            offsetY + (toY * tileSize) + (tileSize / 2),
+            0xffd166,
+            0.6
+          )
+          line.setLineWidth(2, 2)
+        }
+      }
 
       this.add.text(390, 14, 'World Map (Chunked)', { color: '#f2e4bf', fontSize: '16px' })
       this.add.text(390, 38, `Your villages: ${shell.villages.length}`, { color: '#c9b88f', fontSize: '12px' })
       this.add.text(390, 58, `Visible targets: ${shell.visibleVillages.length}`, { color: '#d29a9a', fontSize: '12px' })
-      this.add.text(390, 78, 'Yellow = You, Red = Abandoned', { color: '#c9b88f', fontSize: '12px' })
+      this.add.text(390, 78, 'Yellow = You, Red = Targets, Orange = Selected', { color: '#c9b88f', fontSize: '12px' })
 
       const miniX = 390
       const miniY = 110
@@ -644,6 +683,11 @@ async function mountGameShell() {
     let activeView: 'map' | 'village' = 'map'
     let reportFilter: ReportFilter = { outcome: 'all', perspective: 'all' }
     let selectedReportId: string | null = null
+    let selectedTargetId: string | null = shell.visibleVillages[0]?.id ?? null
+
+    function getSelectedTarget() {
+      return shell.visibleVillages.find(v => v.id === selectedTargetId) ?? shell.visibleVillages[0] ?? null
+    }
 
     function renderVillageDetails() {
       const selected = getSelectedVillage(shell.villages, selectedVillageId)
@@ -747,12 +791,15 @@ async function mountGameShell() {
       })
 
       if (shell.visibleVillages.length) {
+        const sortedTargets = getSortedTargets(shell.visibleVillages, selected)
+        const selectedTarget = sortedTargets.find(v => v.id === selectedTargetId) ?? sortedTargets[0] ?? null
+
         villageDetailsHost.innerHTML += `
           <div class="mt-4">
             <h4 class="text-sm uppercase tracking-wide text-amber-200/85 mb-2">Attack Target</h4>
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
               <select id="attack-target" class="input-field">
-                ${shell.visibleVillages.map(v => `<option value="${v.id}">${v.name} (${v.x}|${v.y}) • ${v.troops} troops</option>`).join('')}
+                ${sortedTargets.map(v => `<option value="${v.id}" ${v.id === selectedTarget?.id ? 'selected' : ''}>${v.name} (${v.x}|${v.y}) • ${v.troops} troops • ${v.distanceTiles.toFixed(1)}t</option>`).join('')}
               </select>
               <select id="attack-unit" class="input-field">
                 <option value="Spearman">Spearman (${selected.troops.spearmen})</option>
@@ -762,6 +809,14 @@ async function mountGameShell() {
               <button id="send-attack" class="btn btn-danger">Send Attack</button>
             </div>
             <div id="attack-preview" class="text-xs text-amber-100/80 mt-2"></div>
+            <div class="target-grid mt-3">
+              ${sortedTargets.slice(0, 6).map(v => `
+                <button class="target-card ${v.id === selectedTarget?.id ? 'target-card-selected' : ''}" data-target-id="${v.id}">
+                  <strong>${v.name}</strong>
+                  <span>${v.kind} • ${v.x}|${v.y}</span>
+                  <span>${v.distanceTiles.toFixed(1)} tiles • ${v.troops} troops</span>
+                </button>`).join('')}
+            </div>
           </div>`
 
         const attackTargetEl = document.getElementById('attack-target') as HTMLSelectElement
@@ -769,17 +824,24 @@ async function mountGameShell() {
         const attackCountEl = document.getElementById('attack-count') as HTMLInputElement
         const attackPreviewEl = document.getElementById('attack-preview') as HTMLDivElement
         const updateAttackPreview = () => {
-          const unitType = attackUnitEl.value
-          const count = Number(attackCountEl.value || '0')
-          const carry = estimateAttackCarry(unitType, count)
-          const target = shell.visibleVillages.find(v => v.id === attackTargetEl.value)
-          attackPreviewEl.textContent = target
-            ? `Estimated carry cap: ${carry} resources • Target troops: ${target.troops}`
-            : `Estimated carry cap: ${carry} resources`
+          selectedTargetId = attackTargetEl.value
+          const preview = buildAttackPreview(selected, getSelectedTarget(), attackUnitEl.value, Number(attackCountEl.value || '0'))
+          attackPreviewEl.textContent = `Distance: ${preview.distanceTiles.toFixed(1)} tiles • Travel: ${formatCountdown(preview.durationSeconds)} • Carry: ${preview.estimatedCarry} • Target troops: ${preview.targetTroops}`
         }
         attackUnitEl.addEventListener('change', updateAttackPreview)
         attackCountEl.addEventListener('input', updateAttackPreview)
-        attackTargetEl.addEventListener('change', updateAttackPreview)
+        attackTargetEl.addEventListener('change', () => {
+          updateAttackPreview()
+          renderMap()
+        })
+        villageDetailsHost.querySelectorAll<HTMLButtonElement>('.target-card').forEach((button) => {
+          button.addEventListener('click', () => {
+            selectedTargetId = button.dataset.targetId ?? selectedTargetId
+            attackTargetEl.value = selectedTargetId ?? attackTargetEl.value
+            renderVillageDetails()
+            renderMap()
+          })
+        })
         updateAttackPreview()
 
         document.getElementById('send-attack')?.addEventListener('click', async () => {
@@ -809,6 +871,11 @@ async function mountGameShell() {
           const unitCount = Number(attackCountEl.value || '0')
           const targets = shell.visibleVillages
             .filter(v => v.kind === 'abandoned')
+            .sort((left, right) => {
+              const leftDistance = buildAttackPreview(selected, left, unitType, unitCount).distanceTiles
+              const rightDistance = buildAttackPreview(selected, right, unitType, unitCount).distanceTiles
+              return leftDistance - rightDistance
+            })
             .slice(0, 5)
             .map(v => v.id)
 
@@ -953,16 +1020,29 @@ async function mountGameShell() {
         phaserGame.destroy(true)
       }
 
-      phaserGame = startPhaser(phaserRoot, shell, selectedVillageId, (villageId) => {
-        selectedVillageId = villageId
-        renderVillageDetails()
-        renderMap()
-      })
+      phaserGame = startPhaser(
+        phaserRoot,
+        shell,
+        selectedVillageId,
+        selectedTargetId,
+        (villageId) => {
+          selectedVillageId = villageId
+          selectedTargetId = shell.visibleVillages[0]?.id ?? null
+          renderVillageDetails()
+          renderMap()
+        },
+        (targetVillageId) => {
+          selectedTargetId = targetVillageId
+          renderVillageDetails()
+          renderMap()
+        }
+      )
     }
 
     app.querySelectorAll<HTMLElement>('.village-select').forEach((item) => {
       item.addEventListener('click', () => {
         selectedVillageId = item.dataset.villageId ?? selectedVillageId
+        selectedTargetId = shell.visibleVillages[0]?.id ?? null
         renderVillageDetails()
         renderMap()
       })
@@ -973,6 +1053,9 @@ async function mountGameShell() {
       serverNowMs = Date.parse(shell.serverTimeUtc) || Date.now()
       if (!shell.villages.find(v => v.id === selectedVillageId)) {
         selectedVillageId = shell.villages[0]?.id ?? null
+      }
+      if (!shell.visibleVillages.find(v => v.id === selectedTargetId)) {
+        selectedTargetId = shell.visibleVillages[0]?.id ?? null
       }
       renderVillageDetails()
       renderMap()

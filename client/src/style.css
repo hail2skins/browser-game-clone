@@ -244,6 +244,40 @@ body::before {
 .node-iron { left: 27%; top: 73%; transform: translate(-50%, -50%); }
 .node-store { left: 73%; top: 73%; transform: translate(-50%, -50%); }
 
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+
+.target-card {
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  padding: 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(185 138 61 / 30%);
+  background: linear-gradient(180deg, rgb(34 21 16 / 75%), rgb(34 28 19 / 72%));
+  color: var(--text-parchment);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.target-card:hover {
+  transform: translateY(-1px);
+  border-color: rgb(227 187 98 / 70%);
+}
+
+.target-card span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.target-card-selected {
+  border-color: rgb(227 187 98 / 90%);
+  box-shadow: 0 0 0 1px rgb(227 187 98 / 35%) inset;
+  background: linear-gradient(180deg, rgb(78 44 23 / 80%), rgb(47 35 23 / 82%));
+}
+
 @media (max-width: 1024px) {
   .shell-grid { grid-template-columns: 1fr !important; grid-template-rows: auto auto 1fr auto !important; }
   .shell-sidebar { border-right: none !important; border-top: 1px solid rgb(185 138 61 / 35%); }
