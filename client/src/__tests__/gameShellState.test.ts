@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttackPreview, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil } from '../gameShellState'
+import { buildAttackPreview, buildRecruitmentPreview, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -102,5 +102,24 @@ describe('gameShellState', () => {
       estimatedCarry: 100,
       targetTroops: 8
     })
+  })
+
+  it('builds recruitment preview with cost and duration', () => {
+    const preview = buildRecruitmentPreview('Swordsman', 3, 1)
+
+    expect(preview).toEqual({
+      wood: 90,
+      clay: 90,
+      iron: 210,
+      durationSeconds: 300
+    })
+  })
+
+  it('chooses sensible attack preset counts from available troops', () => {
+    expect(getAttackPresetCount(18, 'poke')).toBe(5)
+    expect(getAttackPresetCount(18, 'raid')).toBe(9)
+    expect(getAttackPresetCount(18, 'assault')).toBe(18)
+    expect(getAttackPresetCount(3, 'raid')).toBe(3)
+    expect(getAttackPresetCount(0, 'poke')).toBe(0)
   })
 })

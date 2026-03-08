@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { buildAttackPreview, clampChunk, filterReports, formatCountdown, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
+import { buildAttackPreview, buildRecruitmentPreview, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -730,6 +730,7 @@ async function mountGameShell() {
           <button class="btn btn-secondary recruit-now-btn" data-village-id="${selected.id}">Recruit Now</button>
           <button class="btn btn-primary recruit-queue-btn" data-village-id="${selected.id}">Queue Recruit</button>
         </div>
+        <div id="recruit-preview" class="text-xs text-amber-100/80 mb-4"></div>
         <div class="space-y-2">
           <div class="nav-item"><span>Main Building (Lv ${selected.buildings.main}) [${selected.upgradeCosts.main.wood}/${selected.upgradeCosts.main.clay}/${selected.upgradeCosts.main.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="MainBuilding">Queue</button></div>
           <div class="nav-item"><span>Timber Camp (Lv ${selected.buildings.timberCamp}) [${selected.upgradeCosts.timberCamp.wood}/${selected.upgradeCosts.timberCamp.clay}/${selected.upgradeCosts.timberCamp.iron}]</span><button class="btn btn-primary queue-btn" data-village-id="${selected.id}" data-building="TimberCamp">Queue</button></div>
@@ -755,15 +756,30 @@ async function mountGameShell() {
 
       const recruitUnitEl = document.getElementById('recruit-unit') as HTMLSelectElement
       const recruitCountEl = document.getElementById('recruit-count') as HTMLInputElement
+      const recruitPreviewEl = document.getElementById('recruit-preview') as HTMLDivElement
       const queueBtn = villageDetailsHost.querySelector<HTMLButtonElement>('.recruit-queue-btn')
       const nowBtn = villageDetailsHost.querySelector<HTMLButtonElement>('.recruit-now-btn')
+
+      const updateRecruitPreview = () => {
+        const queueDepth = shell.recruitmentQueue.filter(q => q.villageId === selected.id).length
+        const preview = buildRecruitmentPreview(recruitUnitEl.value, Number(recruitCountEl.value || '0'), queueDepth)
+        recruitPreviewEl.textContent = `Cost: ${preview.wood} wood, ${preview.clay} clay, ${preview.iron} iron • Time: ${formatCountdown(preview.durationSeconds)} • Queue depth: ${queueDepth}`
+      }
+      recruitUnitEl.addEventListener('change', updateRecruitPreview)
+      recruitCountEl.addEventListener('input', updateRecruitPreview)
+      updateRecruitPreview()
 
       queueBtn?.addEventListener('click', async () => {
         queueBtn.disabled = true
         try {
+          const count = Number(recruitCountEl.value || '0')
+          if (count <= 0) {
+            toast('Recruit count must be greater than zero.', 'error')
+            return
+          }
           await api(`/api/game/villages/${selected.id}/recruit/queue`, 'POST', {
             unitType: recruitUnitEl.value,
-            count: Number(recruitCountEl.value || '0')
+            count
           })
           toast('Recruitment queued.', 'success')
           await mountGameShell()
@@ -777,9 +793,14 @@ async function mountGameShell() {
       nowBtn?.addEventListener('click', async () => {
         nowBtn.disabled = true
         try {
+          const count = Number(recruitCountEl.value || '0')
+          if (count <= 0) {
+            toast('Recruit count must be greater than zero.', 'error')
+            return
+          }
           await api(`/api/game/villages/${selected.id}/recruit`, 'POST', {
             unitType: recruitUnitEl.value,
-            count: Number(recruitCountEl.value || '0')
+            count
           })
           toast('Unit recruited.', 'success')
           await mountGameShell()
@@ -808,6 +829,11 @@ async function mountGameShell() {
               <input id="attack-count" class="input-field" type="number" min="1" value="5" />
               <button id="send-attack" class="btn btn-danger">Send Attack</button>
             </div>
+            <div class="flex gap-2 mt-2">
+              <button class="btn btn-secondary attack-preset" data-preset="poke">Poke</button>
+              <button class="btn btn-secondary attack-preset" data-preset="raid">Raid</button>
+              <button class="btn btn-secondary attack-preset" data-preset="assault">Assault</button>
+            </div>
             <div id="attack-preview" class="text-xs text-amber-100/80 mt-2"></div>
             <div class="target-grid mt-3">
               ${sortedTargets.slice(0, 6).map(v => `
@@ -823,6 +849,9 @@ async function mountGameShell() {
         const attackUnitEl = document.getElementById('attack-unit') as HTMLSelectElement
         const attackCountEl = document.getElementById('attack-count') as HTMLInputElement
         const attackPreviewEl = document.getElementById('attack-preview') as HTMLDivElement
+        const getAvailableTroopsForSelectedUnit = () => attackUnitEl.value === 'Swordsman'
+          ? selected.troops.swordsmen
+          : selected.troops.spearmen
         const updateAttackPreview = () => {
           selectedTargetId = attackTargetEl.value
           const preview = buildAttackPreview(selected, getSelectedTarget(), attackUnitEl.value, Number(attackCountEl.value || '0'))
@@ -842,12 +871,23 @@ async function mountGameShell() {
             renderMap()
           })
         })
+        villageDetailsHost.querySelectorAll<HTMLButtonElement>('.attack-preset').forEach((button) => {
+          button.addEventListener('click', () => {
+            const preset = button.dataset.preset as 'poke' | 'raid' | 'assault'
+            attackCountEl.value = String(getAttackPresetCount(getAvailableTroopsForSelectedUnit(), preset))
+            updateAttackPreview()
+          })
+        })
         updateAttackPreview()
 
         document.getElementById('send-attack')?.addEventListener('click', async () => {
           const targetVillageId = attackTargetEl.value
           const unitType = attackUnitEl.value
           const unitCount = Number(attackCountEl.value || '0')
+          if (unitCount <= 0) {
+            toast('Attack count must be greater than zero.', 'error')
+            return
+          }
           try {
             await api('/api/game/movements/attack', 'POST', {
               sourceVillageId: selected.id,

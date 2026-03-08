@@ -1,5 +1,6 @@
 export type VillageSummary = { id: string; x: number; y: number }
 export type TargetSummary = { id: string; x: number; y: number; name: string; troops: number; kind: 'abandoned' | 'player' }
+export type AttackPreset = 'poke' | 'raid' | 'assault'
 
 export function getSelectedVillage<T extends VillageSummary>(villages: T[], selectedVillageId: string | null): T | null {
   if (!villages.length) return null
@@ -116,5 +117,33 @@ export function buildAttackPreview(village: VillageSummary | null, target: Targe
     durationSeconds: getTravelDurationSeconds(unitType, distanceTiles),
     estimatedCarry,
     targetTroops: target.troops
+  }
+}
+
+export function buildRecruitmentPreview(unitType: string, unitCount: number, queueDepth: number) {
+  const count = Math.max(0, unitCount)
+  const perUnit = unitType.toLowerCase() === 'swordsman'
+    ? { wood: 30, clay: 30, iron: 70, seconds: 95 }
+    : { wood: 50, clay: 30, iron: 10, seconds: 75 }
+
+  return {
+    wood: perUnit.wood * count,
+    clay: perUnit.clay * count,
+    iron: perUnit.iron * count,
+    durationSeconds: (perUnit.seconds * count) + (Math.max(0, queueDepth) * 15)
+  }
+}
+
+export function getAttackPresetCount(availableTroops: number, preset: AttackPreset): number {
+  const available = Math.max(0, availableTroops)
+  if (available === 0) return 0
+
+  switch (preset) {
+    case 'poke':
+      return Math.min(available, 5)
+    case 'raid':
+      return Math.min(available, Math.max(available >= 9 ? 9 : available, Math.floor(available / 2)))
+    case 'assault':
+      return available
   }
 }
