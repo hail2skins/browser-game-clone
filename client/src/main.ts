@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { buildAttackPreview, buildRecruitmentPreview, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter } from './gameShellState'
+import { buildAttackPreview, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, saveAttackTemplate, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -12,6 +12,7 @@ type AuthState = {
 type ToastKind = 'success' | 'error' | 'info'
 
 const API_BASE = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5250'
+const ATTACK_TEMPLATES_KEY = 'browserGame.attackTemplates'
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const auth: AuthState = {
@@ -55,6 +56,23 @@ function clearAuth() {
   auth.email = null
   auth.isApproved = false
   auth.isAdmin = false
+}
+
+function loadAttackTemplates(): SavedAttackTemplate[] {
+  try {
+    const raw = localStorage.getItem(ATTACK_TEMPLATES_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is SavedAttackTemplate =>
+      item && typeof item.name === 'string' && typeof item.unitType === 'string' && typeof item.unitCount === 'number')
+  } catch {
+    return []
+  }
+}
+
+function persistAttackTemplates(templates: SavedAttackTemplate[]) {
+  localStorage.setItem(ATTACK_TEMPLATES_KEY, JSON.stringify(templates))
 }
 
 async function api(path: string, method = 'GET', body?: any) {
@@ -680,6 +698,7 @@ async function mountGameShell() {
     const mapSection = document.getElementById('map-section')!
     const villageSection = document.getElementById('village-section')!
     let phaserGame: Phaser.Game | null = null
+    let attackTemplates = loadAttackTemplates()
     let activeView: 'map' | 'village' = 'map'
     let reportFilter: ReportFilter = { outcome: 'all', perspective: 'all' }
     let selectedReportId: string | null = null
@@ -833,8 +852,24 @@ async function mountGameShell() {
               <button class="btn btn-secondary attack-preset" data-preset="poke">Poke</button>
               <button class="btn btn-secondary attack-preset" data-preset="raid">Raid</button>
               <button class="btn btn-secondary attack-preset" data-preset="assault">Assault</button>
+              <button id="save-template" class="btn btn-primary">Save Template</button>
             </div>
             <div id="attack-preview" class="text-xs text-amber-100/80 mt-2"></div>
+            <div class="mt-3">
+              <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Saved Templates</div>
+              <div class="template-grid">
+                ${attackTemplates.length
+                  ? attackTemplates.map(template => `
+                    <div class="template-card">
+                      <button class="template-apply" data-template-name="${template.name}">
+                        <strong>${template.name}</strong>
+                        <span>${buildTemplateLabel(template.unitType, template.unitCount)}</span>
+                      </button>
+                      <button class="template-delete" data-template-name="${template.name}">x</button>
+                    </div>`).join('')
+                  : '<div class="text-xs text-amber-100/70">No saved templates yet.</div>'}
+              </div>
+            </div>
             <div class="target-grid mt-3">
               ${sortedTargets.slice(0, 6).map(v => `
                 <button class="target-card ${v.id === selectedTarget?.id ? 'target-card-selected' : ''}" data-target-id="${v.id}">
@@ -876,6 +911,42 @@ async function mountGameShell() {
             const preset = button.dataset.preset as 'poke' | 'raid' | 'assault'
             attackCountEl.value = String(getAttackPresetCount(getAvailableTroopsForSelectedUnit(), preset))
             updateAttackPreview()
+          })
+        })
+        document.getElementById('save-template')?.addEventListener('click', () => {
+          const unitCount = Number(attackCountEl.value || '0')
+          if (unitCount <= 0) {
+            toast('Template count must be greater than zero.', 'error')
+            return
+          }
+
+          const defaultName = buildTemplateLabel(attackUnitEl.value, unitCount)
+          const name = window.prompt('Template name', defaultName)?.trim()
+          if (!name) return
+
+          attackTemplates = saveAttackTemplate(attackTemplates, {
+            name,
+            unitType: attackUnitEl.value,
+            unitCount
+          })
+          persistAttackTemplates(attackTemplates)
+          toast(`Template saved: ${name}`, 'success')
+          renderVillageDetails()
+        })
+        villageDetailsHost.querySelectorAll<HTMLButtonElement>('.template-apply').forEach((button) => {
+          button.addEventListener('click', () => {
+            const template = attackTemplates.find(entry => entry.name === button.dataset.templateName)
+            if (!template) return
+            attackUnitEl.value = template.unitType
+            attackCountEl.value = String(template.unitCount)
+            updateAttackPreview()
+          })
+        })
+        villageDetailsHost.querySelectorAll<HTMLButtonElement>('.template-delete').forEach((button) => {
+          button.addEventListener('click', () => {
+            attackTemplates = attackTemplates.filter(entry => entry.name !== button.dataset.templateName)
+            persistAttackTemplates(attackTemplates)
+            renderVillageDetails()
           })
         })
         updateAttackPreview()

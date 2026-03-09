@@ -1,6 +1,7 @@
 export type VillageSummary = { id: string; x: number; y: number }
 export type TargetSummary = { id: string; x: number; y: number; name: string; troops: number; kind: 'abandoned' | 'player' }
 export type AttackPreset = 'poke' | 'raid' | 'assault'
+export type SavedAttackTemplate = { name: string; unitType: string; unitCount: number }
 
 export function getSelectedVillage<T extends VillageSummary>(villages: T[], selectedVillageId: string | null): T | null {
   if (!villages.length) return null
@@ -146,4 +147,17 @@ export function getAttackPresetCount(availableTroops: number, preset: AttackPres
     case 'assault':
       return available
   }
+}
+
+export function buildTemplateLabel(unitType: string, unitCount: number): string {
+  return `${unitType} x${Math.max(0, unitCount)}`
+}
+
+export function saveAttackTemplate(
+  existing: SavedAttackTemplate[],
+  next: SavedAttackTemplate,
+  maxTemplates = 6
+): SavedAttackTemplate[] {
+  const filtered = existing.filter(template => template.name !== next.name)
+  return [next, ...filtered].slice(0, Math.max(1, maxTemplates))
 }

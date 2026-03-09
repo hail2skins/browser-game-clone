@@ -278,6 +278,43 @@ body::before {
   background: linear-gradient(180deg, rgb(78 44 23 / 80%), rgb(47 35 23 / 82%));
 }
 
+.template-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.template-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.template-apply,
+.template-delete {
+  border-radius: 0.6rem;
+  border: 1px solid rgb(185 138 61 / 35%);
+  background: linear-gradient(180deg, rgb(26 33 25 / 88%), rgb(21 29 22 / 84%));
+  color: var(--text-parchment);
+}
+
+.template-apply {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+}
+
+.template-apply span {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+}
+
+.template-delete {
+  padding: 0.55rem 0.7rem;
+  font-weight: 700;
+}
+
 @media (max-width: 1024px) {
   .shell-grid { grid-template-columns: 1fr !important; grid-template-rows: auto auto 1fr auto !important; }
   .shell-sidebar { border-right: none !important; border-top: 1px solid rgb(185 138 61 / 35%); }

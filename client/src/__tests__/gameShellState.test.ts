@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttackPreview, buildRecruitmentPreview, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, secondsUntil } from '../gameShellState'
+import { buildAttackPreview, buildRecruitmentPreview, buildTemplateLabel, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, saveAttackTemplate, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -121,5 +121,29 @@ describe('gameShellState', () => {
     expect(getAttackPresetCount(18, 'assault')).toBe(18)
     expect(getAttackPresetCount(3, 'raid')).toBe(3)
     expect(getAttackPresetCount(0, 'poke')).toBe(0)
+  })
+
+  it('builds a readable template label', () => {
+    expect(buildTemplateLabel('Spearman', 12)).toBe('Spearman x12')
+  })
+
+  it('saves attack templates by name and caps the list', () => {
+    const templates = [
+      { name: 'A', unitType: 'Spearman', unitCount: 5 },
+      { name: 'B', unitType: 'Spearman', unitCount: 6 },
+      { name: 'C', unitType: 'Spearman', unitCount: 7 },
+      { name: 'D', unitType: 'Spearman', unitCount: 8 },
+      { name: 'E', unitType: 'Spearman', unitCount: 9 },
+      { name: 'F', unitType: 'Spearman', unitCount: 10 }
+    ]
+
+    const updated = saveAttackTemplate(templates, { name: 'B', unitType: 'Swordsman', unitCount: 4 }, 4)
+
+    expect(updated).toEqual([
+      { name: 'B', unitType: 'Swordsman', unitCount: 4 },
+      { name: 'A', unitType: 'Spearman', unitCount: 5 },
+      { name: 'C', unitType: 'Spearman', unitCount: 7 },
+      { name: 'D', unitType: 'Spearman', unitCount: 8 }
+    ])
   })
 })
