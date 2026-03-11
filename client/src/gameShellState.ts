@@ -2,6 +2,8 @@ export type VillageSummary = { id: string; x: number; y: number }
 export type TargetSummary = { id: string; x: number; y: number; name: string; troops: number; kind: 'abandoned' | 'player' }
 export type AttackPreset = 'poke' | 'raid' | 'assault'
 export type SavedAttackTemplate = { name: string; unitType: string; unitCount: number }
+export type MovementLike = { id: string; sourceVillageId: string; mission: string }
+export type QueueLike = { villageId: string }
 
 export function getSelectedVillage<T extends VillageSummary>(villages: T[], selectedVillageId: string | null): T | null {
   if (!villages.length) return null
@@ -160,4 +162,29 @@ export function saveAttackTemplate(
 ): SavedAttackTemplate[] {
   const filtered = existing.filter(template => template.name !== next.name)
   return [next, ...filtered].slice(0, Math.max(1, maxTemplates))
+}
+
+export function getSuggestedFarmTargets<T extends TargetSummary>(targets: T[], village: VillageSummary | null, limit: number): Array<T & { distanceTiles: number }> {
+  return getSortedTargets(targets.filter(target => target.kind === 'abandoned'), village).slice(0, Math.max(0, limit))
+}
+
+export function buildCommandSummary(
+  village: VillageSummary | null,
+  movements: MovementLike[],
+  buildingQueue: QueueLike[],
+  recruitmentQueue: QueueLike[]
+) {
+  if (!village) {
+    return {
+      outboundCommands: 0,
+      buildingQueueDepth: 0,
+      recruitmentQueueDepth: 0
+    }
+  }
+
+  return {
+    outboundCommands: movements.filter(movement => movement.sourceVillageId === village.id).length,
+    buildingQueueDepth: buildingQueue.filter(item => item.villageId === village.id).length,
+    recruitmentQueueDepth: recruitmentQueue.filter(item => item.villageId === village.id).length
+  }
 }

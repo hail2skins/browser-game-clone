@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttackPreview, buildRecruitmentPreview, buildTemplateLabel, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, saveAttackTemplate, secondsUntil } from '../gameShellState'
+import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, saveAttackTemplate, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -145,5 +145,36 @@ describe('gameShellState', () => {
       { name: 'C', unitType: 'Spearman', unitCount: 7 },
       { name: 'D', unitType: 'Spearman', unitCount: 8 }
     ])
+  })
+
+  it('suggests nearest abandoned villages for farm runs', () => {
+    const targets = [
+      { id: 'a', x: 14, y: 14, name: 'A', troops: 4, kind: 'abandoned' as const },
+      { id: 'b', x: 20, y: 20, name: 'B', troops: 4, kind: 'player' as const },
+      { id: 'c', x: 11, y: 12, name: 'C', troops: 2, kind: 'abandoned' as const }
+    ]
+
+    const suggested = getSuggestedFarmTargets(targets, { id: 'home', x: 10, y: 10 }, 2)
+
+    expect(suggested.map(target => target.id)).toEqual(['c', 'a'])
+  })
+
+  it('builds a command summary from current movements and queues', () => {
+    const summary = buildCommandSummary(
+      { id: 'v1', x: 10, y: 10 },
+      [
+        { id: 'm1', sourceVillageId: 'v1', mission: 'attack' },
+        { id: 'm2', sourceVillageId: 'v1', mission: 'return' },
+        { id: 'm3', sourceVillageId: 'v2', mission: 'attack' }
+      ],
+      [{ villageId: 'v1' }, { villageId: 'v2' }],
+      [{ villageId: 'v1' }, { villageId: 'v1' }]
+    )
+
+    expect(summary).toEqual({
+      outboundCommands: 2,
+      buildingQueueDepth: 1,
+      recruitmentQueueDepth: 2
+    })
   })
 })

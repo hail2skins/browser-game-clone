@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { buildAttackPreview, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, saveAttackTemplate, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
+import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, saveAttackTemplate, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -598,6 +598,7 @@ async function mountGameShell() {
             <div class="flex gap-2">
               <button id="view-map" class="btn btn-primary">Map View</button>
               <button id="view-village" class="btn btn-secondary">Village View</button>
+              <button id="view-command" class="btn btn-secondary">Command View</button>
             </div>
           </section>
           <section id="map-section" class="medieval-panel p-4 sm:p-5">
@@ -617,6 +618,10 @@ async function mountGameShell() {
           <section id="village-section" class="medieval-panel mt-4 p-4">
             <h3 class="fantasy-title text-lg font-semibold mb-3">Village Management</h3>
             <div id="village-details"></div>
+          </section>
+          <section id="command-section" class="medieval-panel mt-4 p-4">
+            <h3 class="fantasy-title text-lg font-semibold mb-3">Rally Point</h3>
+            <div id="command-details"></div>
           </section>
           <section class="medieval-panel mt-4 p-4">
             <h3 class="fantasy-title text-lg font-semibold mb-3">Army Movements</h3>
@@ -697,15 +702,54 @@ async function mountGameShell() {
     const phaserRoot = document.getElementById('phaser-root')!
     const mapSection = document.getElementById('map-section')!
     const villageSection = document.getElementById('village-section')!
+    const commandSection = document.getElementById('command-section')!
+    const commandDetailsHost = document.getElementById('command-details')!
     let phaserGame: Phaser.Game | null = null
     let attackTemplates = loadAttackTemplates()
-    let activeView: 'map' | 'village' = 'map'
+    let activeView: 'map' | 'village' | 'command' = 'map'
     let reportFilter: ReportFilter = { outcome: 'all', perspective: 'all' }
     let selectedReportId: string | null = null
     let selectedTargetId: string | null = shell.visibleVillages[0]?.id ?? null
 
     function getSelectedTarget() {
       return shell.visibleVillages.find(v => v.id === selectedTargetId) ?? shell.visibleVillages[0] ?? null
+    }
+
+    async function launchAttack(sourceVillageId: string, targetVillageId: string, unitType: string, unitCount: number) {
+      if (unitCount <= 0) {
+        toast('Attack count must be greater than zero.', 'error')
+        return
+      }
+
+      await api('/api/game/movements/attack', 'POST', {
+        sourceVillageId,
+        targetVillageId,
+        unitType,
+        unitCount
+      })
+    }
+
+    async function launchFarmRun(sourceVillageId: string, unitType: string, unitCount: number) {
+      const selectedVillage = getSelectedVillage(shell.villages, selectedVillageId)
+      const targets = getSuggestedFarmTargets(shell.visibleVillages, selectedVillage, 5).map(v => v.id)
+
+      if (!targets.length) {
+        toast('No abandoned targets in this chunk.', 'info')
+        return
+      }
+
+      if (unitCount <= 0) {
+        toast('Attack count must be greater than zero.', 'error')
+        return
+      }
+
+      const result = await api('/api/game/movements/farm-run', 'POST', {
+        sourceVillageId,
+        unitType,
+        unitCount,
+        targetVillageIds: targets
+      })
+      toast(`Farm launched: ${result.launched}/${result.attempted}`, 'success')
     }
 
     function renderVillageDetails() {
@@ -955,17 +999,8 @@ async function mountGameShell() {
           const targetVillageId = attackTargetEl.value
           const unitType = attackUnitEl.value
           const unitCount = Number(attackCountEl.value || '0')
-          if (unitCount <= 0) {
-            toast('Attack count must be greater than zero.', 'error')
-            return
-          }
           try {
-            await api('/api/game/movements/attack', 'POST', {
-              sourceVillageId: selected.id,
-              targetVillageId,
-              unitType,
-              unitCount
-            })
+            await launchAttack(selected.id, targetVillageId, unitType, unitCount)
             toast('Attack launched.', 'success')
             await mountGameShell()
           } catch (err: any) {
@@ -980,35 +1015,135 @@ async function mountGameShell() {
         document.getElementById('farm-run')?.addEventListener('click', async () => {
           const unitType = attackUnitEl.value
           const unitCount = Number(attackCountEl.value || '0')
-          const targets = shell.visibleVillages
-            .filter(v => v.kind === 'abandoned')
-            .sort((left, right) => {
-              const leftDistance = buildAttackPreview(selected, left, unitType, unitCount).distanceTiles
-              const rightDistance = buildAttackPreview(selected, right, unitType, unitCount).distanceTiles
-              return leftDistance - rightDistance
-            })
-            .slice(0, 5)
-            .map(v => v.id)
-
-          if (!targets.length) {
-            toast('No abandoned targets in this chunk.', 'info')
-            return
-          }
-
           try {
-            const result = await api('/api/game/movements/farm-run', 'POST', {
-              sourceVillageId: selected.id,
-              unitType,
-              unitCount,
-              targetVillageIds: targets
-            })
-            toast(`Farm launched: ${result.launched}/${result.attempted}`, 'success')
+            await launchFarmRun(selected.id, unitType, unitCount)
             await mountGameShell()
           } catch (err: any) {
             toast(err.message || 'Farm run failed', 'error')
           }
         })
       }
+    }
+
+    function renderCommandDetails() {
+      const selected = getSelectedVillage(shell.villages, selectedVillageId)
+      if (!selected) {
+        commandDetailsHost.innerHTML = '<div class="text-amber-100/80 text-sm">No village selected.</div>'
+        return
+      }
+
+      const selectedTarget = getSelectedTarget()
+      const commandSummary = buildCommandSummary(selected, shell.movements, shell.buildQueue, shell.recruitmentQueue)
+      const farmTargets = getSuggestedFarmTargets(shell.visibleVillages, selected, 5)
+      const villageMovements = shell.movements.filter(m => m.sourceVillageId === selected.id)
+
+      commandDetailsHost.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="medieval-panel p-3">
+            <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Command Status</div>
+            <div class="space-y-2 text-sm">
+              <div class="nav-item"><span>Outbound</span><span>${commandSummary.outboundCommands}</span></div>
+              <div class="nav-item"><span>Building Queue</span><span>${commandSummary.buildingQueueDepth}</span></div>
+              <div class="nav-item"><span>Recruit Queue</span><span>${commandSummary.recruitmentQueueDepth}</span></div>
+              <div class="nav-item"><span>Selected Target</span><span>${selectedTarget ? `${selectedTarget.name} (${selectedTarget.x}|${selectedTarget.y})` : 'None'}</span></div>
+            </div>
+          </div>
+          <div class="medieval-panel p-3">
+            <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Saved Templates</div>
+            <div class="template-grid">
+              ${attackTemplates.length
+                ? attackTemplates.map(template => `
+                  <div class="template-card">
+                    <button class="template-apply command-template-apply" data-template-name="${template.name}">
+                      <strong>${template.name}</strong>
+                      <span>${buildTemplateLabel(template.unitType, template.unitCount)}</span>
+                    </button>
+                    <button class="template-delete command-template-send" data-template-name="${template.name}">Go</button>
+                  </div>`).join('')
+                : '<div class="text-xs text-amber-100/70">No saved templates yet.</div>'}
+            </div>
+          </div>
+          <div class="medieval-panel p-3">
+            <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Nearest Farm Targets</div>
+            <div class="template-grid">
+              ${farmTargets.length
+                ? farmTargets.map(target => `
+                  <div class="template-card">
+                    <button class="template-apply command-target-select" data-target-id="${target.id}">
+                      <strong>${target.name}</strong>
+                      <span>${target.distanceTiles.toFixed(1)}t • ${target.troops} troops</span>
+                    </button>
+                    <button class="template-delete command-target-farm" data-target-id="${target.id}">Farm</button>
+                  </div>`).join('')
+                : '<div class="text-xs text-amber-100/70">No abandoned villages in this chunk.</div>'}
+            </div>
+          </div>
+        </div>
+        <div class="medieval-panel p-3 mt-4">
+          <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Outgoing From ${selected.name}</div>
+          <div class="space-y-2 text-sm">
+            ${villageMovements.length
+              ? villageMovements.map(movement => `
+                <div class="nav-item">
+                  <span>${movement.mission} ${movement.unitCount} ${movement.unitType} -> ${movement.targetVillageName}</span>
+                  <span>${formatCountdown(secondsUntil(Date.parse(movement.arrivesAt), serverNowMs))}</span>
+                </div>`).join('')
+              : '<div class="text-amber-100/70">No active outbound commands.</div>'}
+          </div>
+        </div>`
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-template-apply').forEach((button) => {
+        button.addEventListener('click', () => {
+          const template = attackTemplates.find(entry => entry.name === button.dataset.templateName)
+          if (!template) return
+          activeView = 'village'
+          applyView()
+          selectedTargetId = farmTargets[0]?.id ?? selectedTargetId
+          renderVillageDetails()
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-template-send').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const template = attackTemplates.find(entry => entry.name === button.dataset.templateName)
+          const target = getSelectedTarget()
+          if (!template || !target) {
+            toast('Select a target first.', 'error')
+            return
+          }
+
+          try {
+            await launchAttack(selected.id, target.id, template.unitType, template.unitCount)
+            toast(`Template sent: ${template.name}`, 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Template send failed', 'error')
+          }
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-target-select').forEach((button) => {
+        button.addEventListener('click', () => {
+          selectedTargetId = button.dataset.targetId ?? selectedTargetId
+          renderCommandDetails()
+          renderMap()
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-target-farm').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const target = shell.visibleVillages.find(v => v.id === button.dataset.targetId)
+          if (!target) return
+
+          try {
+            await launchAttack(selected.id, target.id, 'Spearman', Math.min(selected.troops.spearmen, 5))
+            toast(`Farm command sent to ${target.name}.`, 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Farm command failed', 'error')
+          }
+        })
+      })
     }
 
     function renderMovements() {
@@ -1124,6 +1259,7 @@ async function mountGameShell() {
     function applyView() {
       mapSection.style.display = activeView === 'map' ? '' : 'none'
       villageSection.style.display = activeView === 'village' ? '' : 'none'
+      commandSection.style.display = activeView === 'command' ? '' : 'none'
     }
 
     function renderMap() {
@@ -1140,11 +1276,13 @@ async function mountGameShell() {
           selectedVillageId = villageId
           selectedTargetId = shell.visibleVillages[0]?.id ?? null
           renderVillageDetails()
+          renderCommandDetails()
           renderMap()
         },
         (targetVillageId) => {
           selectedTargetId = targetVillageId
           renderVillageDetails()
+          renderCommandDetails()
           renderMap()
         }
       )
@@ -1155,6 +1293,7 @@ async function mountGameShell() {
         selectedVillageId = item.dataset.villageId ?? selectedVillageId
         selectedTargetId = shell.visibleVillages[0]?.id ?? null
         renderVillageDetails()
+        renderCommandDetails()
         renderMap()
       })
     })
@@ -1169,6 +1308,7 @@ async function mountGameShell() {
         selectedTargetId = shell.visibleVillages[0]?.id ?? null
       }
       renderVillageDetails()
+      renderCommandDetails()
       renderMap()
       renderMovements()
       renderBuildQueue()
@@ -1203,6 +1343,10 @@ async function mountGameShell() {
       activeView = 'village'
       applyView()
     })
+    document.getElementById('view-command')!.addEventListener('click', () => {
+      activeView = 'command'
+      applyView()
+    })
     function setOutcomeFilter(value: ReportOutcomeFilter) {
       reportFilter = { ...reportFilter, outcome: value }
       renderReports()
@@ -1233,6 +1377,7 @@ async function mountGameShell() {
     })
 
     renderVillageDetails()
+    renderCommandDetails()
     renderMap()
     renderMovements()
     renderBuildQueue()
