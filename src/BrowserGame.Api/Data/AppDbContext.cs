@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TroopMovement> TroopMovements => Set<TroopMovement>();
     public DbSet<BuildingQueueItem> BuildingQueueItems => Set<BuildingQueueItem>();
     public DbSet<UnitQueueItem> UnitQueueItems => Set<UnitQueueItem>();
+    public DbSet<CommandTemplate> CommandTemplates => Set<CommandTemplate>();
     public DbSet<BattleReport> BattleReports => Set<BattleReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -84,6 +85,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<UnitQueueItem>()
             .HasIndex(q => new { q.VillageId, q.CompletesAt });
+
+        modelBuilder.Entity<CommandTemplate>()
+            .HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CommandTemplate>()
+            .HasIndex(t => new { t.UserId, t.Name })
+            .IsUnique();
+
+        modelBuilder.Entity<CommandTemplate>()
+            .HasIndex(t => new { t.UserId, t.UpdatedAt });
 
         modelBuilder.Entity<BattleReport>()
             .HasIndex(r => new { r.AttackerUserId, r.CreatedAt });

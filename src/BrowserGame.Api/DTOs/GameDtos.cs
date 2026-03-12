@@ -7,3 +7,5 @@ public record AttackVillageRequest(Guid SourceVillageId, Guid TargetVillageId, s
 public record QueueBuildingUpgradeRequest(string BuildingType);
 
 public record FarmRunRequest(Guid SourceVillageId, string UnitType, int UnitCount, IReadOnlyList<Guid> TargetVillageIds);
+
+public record SaveCommandTemplateRequest(string Name, string UnitType, int UnitCount);

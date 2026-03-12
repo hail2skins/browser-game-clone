@@ -11,7 +11,7 @@ namespace api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class GameController(AppDbContext db, GameWorldService worldService, WorldMapService worldMapService) : ControllerBase
+public class GameController(AppDbContext db, GameWorldService worldService, WorldMapService worldMapService, CommandTemplateService commandTemplateService) : ControllerBase
 {
     private const int WorldWidth = 64;
     private const int WorldHeight = 64;
@@ -76,6 +76,8 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             .Where(q => q.CompletedAt == null && villageIds.Contains(q.VillageId))
             .OrderBy(q => q.CompletesAt)
             .ToListAsync();
+
+        var commandTemplates = await commandTemplateService.GetTemplatesAsync(userId);
 
         var minX = chunkX * chunkSize;
         var minY = chunkY * chunkSize;
@@ -222,6 +224,13 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 q.Count,
                 q.CompletesAt,
                 canCancel = true
+            }),
+            commandTemplates = commandTemplates.Select(template => new
+            {
+                template.Id,
+                template.Name,
+                template.UnitType,
+                template.UnitCount
             }),
             visibleVillages = visibleOthers
         });
@@ -458,6 +467,47 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
 
         await db.SaveChangesAsync();
         return Ok(new { launched, attempted = targets.Count });
+    }
+
+    [HttpPost("templates")]
+    public async Task<IActionResult> SaveCommandTemplate(SaveCommandTemplateRequest request)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest("Template name is required.");
+
+        if (request.UnitCount <= 0)
+            return BadRequest("Unit count must be greater than zero.");
+
+        var templates = await commandTemplateService.SaveTemplateAsync(
+            userId,
+            request.Name,
+            request.UnitType,
+            request.UnitCount,
+            DateTime.UtcNow);
+
+        return Ok(templates.Select(template => new
+        {
+            template.Id,
+            template.Name,
+            template.UnitType,
+            template.UnitCount
+        }));
+    }
+
+    [HttpDelete("templates/{templateId:guid}")]
+    public async Task<IActionResult> DeleteCommandTemplate(Guid templateId)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var deleted = await commandTemplateService.DeleteTemplateAsync(userId, templateId);
+        if (!deleted)
+            return NotFound();
+
+        return NoContent();
     }
 
     [HttpPost("movements/{movementId:guid}/cancel")]

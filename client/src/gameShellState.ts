@@ -1,7 +1,7 @@
 export type VillageSummary = { id: string; x: number; y: number }
 export type TargetSummary = { id: string; x: number; y: number; name: string; troops: number; kind: 'abandoned' | 'player' }
 export type AttackPreset = 'poke' | 'raid' | 'assault'
-export type SavedAttackTemplate = { name: string; unitType: string; unitCount: number }
+export type SavedAttackTemplate = { id?: string; name: string; unitType: string; unitCount: number }
 export type MovementLike = { id: string; sourceVillageId: string; mission: string }
 export type QueueLike = { villageId: string }
 

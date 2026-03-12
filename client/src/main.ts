@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, saveAttackTemplate, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
+import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -12,7 +12,6 @@ type AuthState = {
 type ToastKind = 'success' | 'error' | 'info'
 
 const API_BASE = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:5250'
-const ATTACK_TEMPLATES_KEY = 'browserGame.attackTemplates'
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const auth: AuthState = {
@@ -58,23 +57,6 @@ function clearAuth() {
   auth.isAdmin = false
 }
 
-function loadAttackTemplates(): SavedAttackTemplate[] {
-  try {
-    const raw = localStorage.getItem(ATTACK_TEMPLATES_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is SavedAttackTemplate =>
-      item && typeof item.name === 'string' && typeof item.unitType === 'string' && typeof item.unitCount === 'number')
-  } catch {
-    return []
-  }
-}
-
-function persistAttackTemplates(templates: SavedAttackTemplate[]) {
-  localStorage.setItem(ATTACK_TEMPLATES_KEY, JSON.stringify(templates))
-}
-
 async function api(path: string, method = 'GET', body?: any) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -86,6 +68,7 @@ async function api(path: string, method = 'GET', body?: any) {
   })
 
   if (!res.ok) throw new Error(await res.text())
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -348,6 +331,12 @@ type GameShell = {
     count: number
     completesAt: string
     canCancel: boolean
+  }[]
+  commandTemplates: {
+    id: string
+    name: string
+    unitType: string
+    unitCount: number
   }[]
   visibleVillages: {
     id: string
@@ -705,7 +694,7 @@ async function mountGameShell() {
     const commandSection = document.getElementById('command-section')!
     const commandDetailsHost = document.getElementById('command-details')!
     let phaserGame: Phaser.Game | null = null
-    let attackTemplates = loadAttackTemplates()
+    let attackTemplates: SavedAttackTemplate[] = shell.commandTemplates
     let activeView: 'map' | 'village' | 'command' = 'map'
     let reportFilter: ReportFilter = { outcome: 'all', perspective: 'all' }
     let selectedReportId: string | null = null
@@ -905,11 +894,11 @@ async function mountGameShell() {
                 ${attackTemplates.length
                   ? attackTemplates.map(template => `
                     <div class="template-card">
-                      <button class="template-apply" data-template-name="${template.name}">
+                      <button class="template-apply" data-template-id="${(template as any).id ?? ''}" data-template-name="${template.name}">
                         <strong>${template.name}</strong>
                         <span>${buildTemplateLabel(template.unitType, template.unitCount)}</span>
                       </button>
-                      <button class="template-delete" data-template-name="${template.name}">x</button>
+                      <button class="template-delete" data-template-id="${(template as any).id ?? ''}">x</button>
                     </div>`).join('')
                   : '<div class="text-xs text-amber-100/70">No saved templates yet.</div>'}
               </div>
@@ -957,7 +946,7 @@ async function mountGameShell() {
             updateAttackPreview()
           })
         })
-        document.getElementById('save-template')?.addEventListener('click', () => {
+        document.getElementById('save-template')?.addEventListener('click', async () => {
           const unitCount = Number(attackCountEl.value || '0')
           if (unitCount <= 0) {
             toast('Template count must be greater than zero.', 'error')
@@ -968,14 +957,19 @@ async function mountGameShell() {
           const name = window.prompt('Template name', defaultName)?.trim()
           if (!name) return
 
-          attackTemplates = saveAttackTemplate(attackTemplates, {
-            name,
-            unitType: attackUnitEl.value,
-            unitCount
-          })
-          persistAttackTemplates(attackTemplates)
-          toast(`Template saved: ${name}`, 'success')
-          renderVillageDetails()
+          try {
+            const templates = await api('/api/game/templates', 'POST', {
+              name,
+              unitType: attackUnitEl.value,
+              unitCount
+            })
+            attackTemplates = templates
+            toast(`Template saved: ${name}`, 'success')
+            renderVillageDetails()
+            renderCommandDetails()
+          } catch (err: any) {
+            toast(err.message || 'Template save failed', 'error')
+          }
         })
         villageDetailsHost.querySelectorAll<HTMLButtonElement>('.template-apply').forEach((button) => {
           button.addEventListener('click', () => {
@@ -987,10 +981,15 @@ async function mountGameShell() {
           })
         })
         villageDetailsHost.querySelectorAll<HTMLButtonElement>('.template-delete').forEach((button) => {
-          button.addEventListener('click', () => {
-            attackTemplates = attackTemplates.filter(entry => entry.name !== button.dataset.templateName)
-            persistAttackTemplates(attackTemplates)
-            renderVillageDetails()
+          button.addEventListener('click', async () => {
+            try {
+              await api(`/api/game/templates/${button.dataset.templateId}`, 'DELETE')
+              attackTemplates = attackTemplates.filter(entry => entry.id !== button.dataset.templateId)
+              renderVillageDetails()
+              renderCommandDetails()
+            } catch (err: any) {
+              toast(err.message || 'Template delete failed', 'error')
+            }
           })
         })
         updateAttackPreview()
@@ -1054,11 +1053,11 @@ async function mountGameShell() {
               ${attackTemplates.length
                 ? attackTemplates.map(template => `
                   <div class="template-card">
-                    <button class="template-apply command-template-apply" data-template-name="${template.name}">
+                    <button class="template-apply command-template-apply" data-template-id="${template.id ?? ''}" data-template-name="${template.name}">
                       <strong>${template.name}</strong>
                       <span>${buildTemplateLabel(template.unitType, template.unitCount)}</span>
                     </button>
-                    <button class="template-delete command-template-send" data-template-name="${template.name}">Go</button>
+                    <button class="template-delete command-template-send" data-template-id="${template.id ?? ''}" data-template-name="${template.name}">Go</button>
                   </div>`).join('')
                 : '<div class="text-xs text-amber-100/70">No saved templates yet.</div>'}
             </div>
@@ -1301,6 +1300,7 @@ async function mountGameShell() {
     async function reloadShell() {
       shell = await api(`/api/game/shell?chunkX=${chunkX}&chunkY=${chunkY}&chunkSize=${chunkSize}`) as GameShell
       serverNowMs = Date.parse(shell.serverTimeUtc) || Date.now()
+      attackTemplates = shell.commandTemplates
       if (!shell.villages.find(v => v.id === selectedVillageId)) {
         selectedVillageId = shell.villages[0]?.id ?? null
       }
