@@ -35,6 +35,7 @@ builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<GameWorldService>();
 builder.Services.AddScoped<WorldMapService>();
 builder.Services.AddScoped<CommandTemplateService>();
+builder.Services.AddScoped<RallyTargetService>();
 
 var jwt = builder.Configuration.GetSection("Jwt");
 var secret = jwt["Secret"] ?? "CHANGE_ME_SUPER_SECRET_KEY_32_CHARS_MIN";

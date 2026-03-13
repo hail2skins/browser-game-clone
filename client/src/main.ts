@@ -338,6 +338,20 @@ type GameShell = {
     unitType: string
     unitCount: number
   }[]
+  favoriteTargets: {
+    id: string
+    label: string
+    villageId: string
+    name: string
+    x: number
+    y: number
+  }[]
+  recentTargets: {
+    villageId: string
+    name: string
+    x: number
+    y: number
+  }[]
   visibleVillages: {
     id: string
     name: string
@@ -888,6 +902,9 @@ async function mountGameShell() {
               <button id="save-template" class="btn btn-primary">Save Template</button>
             </div>
             <div id="attack-preview" class="text-xs text-amber-100/80 mt-2"></div>
+            <div class="flex gap-2 mt-2">
+              <button id="favorite-target" class="btn btn-secondary">Favorite Selected</button>
+            </div>
             <div class="mt-3">
               <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Saved Templates</div>
               <div class="template-grid">
@@ -971,6 +988,24 @@ async function mountGameShell() {
             toast(err.message || 'Template save failed', 'error')
           }
         })
+        document.getElementById('favorite-target')?.addEventListener('click', async () => {
+          const target = getSelectedTarget()
+          if (!target) {
+            toast('Select a target first.', 'error')
+            return
+          }
+
+          try {
+            await api('/api/game/favorites', 'POST', {
+              villageId: target.id,
+              label: target.name
+            })
+            toast(`Favorite saved: ${target.name}`, 'success')
+            await reloadShell()
+          } catch (err: any) {
+            toast(err.message || 'Favorite save failed', 'error')
+          }
+        })
         villageDetailsHost.querySelectorAll<HTMLButtonElement>('.template-apply').forEach((button) => {
           button.addEventListener('click', () => {
             const template = attackTemplates.find(entry => entry.name === button.dataset.templateName)
@@ -1035,9 +1070,11 @@ async function mountGameShell() {
       const commandSummary = buildCommandSummary(selected, shell.movements, shell.buildQueue, shell.recruitmentQueue)
       const farmTargets = getSuggestedFarmTargets(shell.visibleVillages, selected, 5)
       const villageMovements = shell.movements.filter(m => m.sourceVillageId === selected.id)
+      const favoriteTargets = shell.favoriteTargets
+      const recentTargets = shell.recentTargets
 
       commandDetailsHost.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div class="medieval-panel p-3">
             <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Command Status</div>
             <div class="space-y-2 text-sm">
@@ -1063,6 +1100,21 @@ async function mountGameShell() {
             </div>
           </div>
           <div class="medieval-panel p-3">
+            <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Favorite Targets</div>
+            <div class="template-grid">
+              ${favoriteTargets.length
+                ? favoriteTargets.map(target => `
+                  <div class="template-card">
+                    <button class="template-apply command-favorite-select" data-village-id="${target.villageId}">
+                      <strong>${target.label || target.name}</strong>
+                      <span>${target.name} • ${target.x}|${target.y}</span>
+                    </button>
+                    <button class="template-delete command-favorite-delete" data-favorite-id="${target.id}">x</button>
+                  </div>`).join('')
+                : '<div class="text-xs text-amber-100/70">No favorite targets saved.</div>'}
+            </div>
+          </div>
+          <div class="medieval-panel p-3">
             <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Nearest Farm Targets</div>
             <div class="template-grid">
               ${farmTargets.length
@@ -1075,6 +1127,20 @@ async function mountGameShell() {
                     <button class="template-delete command-target-farm" data-target-id="${target.id}">Farm</button>
                   </div>`).join('')
                 : '<div class="text-xs text-amber-100/70">No abandoned villages in this chunk.</div>'}
+            </div>
+          </div>
+          <div class="medieval-panel p-3">
+            <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Recent Targets</div>
+            <div class="template-grid">
+              ${recentTargets.length
+                ? recentTargets.map(target => `
+                  <div class="template-card">
+                    <button class="template-apply command-recent-select" data-village-id="${target.villageId}">
+                      <strong>${target.name}</strong>
+                      <span>${target.x}|${target.y}</span>
+                    </button>
+                  </div>`).join('')
+                : '<div class="text-xs text-amber-100/70">No recent targets yet.</div>'}
             </div>
           </div>
         </div>
@@ -1124,6 +1190,38 @@ async function mountGameShell() {
       commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-target-select').forEach((button) => {
         button.addEventListener('click', () => {
           selectedTargetId = button.dataset.targetId ?? selectedTargetId
+          renderCommandDetails()
+          renderMap()
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-favorite-select').forEach((button) => {
+        button.addEventListener('click', () => {
+          selectedTargetId = button.dataset.villageId ?? selectedTargetId
+          renderVillageDetails()
+          renderCommandDetails()
+          renderMap()
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-favorite-delete').forEach((button) => {
+        button.addEventListener('click', async () => {
+          try {
+            await api(`/api/game/favorites/${button.dataset.favoriteId}`, 'DELETE')
+            toast('Favorite removed.', 'success')
+            await reloadShell()
+          } catch (err: any) {
+            toast(err.message || 'Favorite delete failed', 'error')
+          }
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-recent-select').forEach((button) => {
+        button.addEventListener('click', () => {
+          selectedTargetId = button.dataset.villageId ?? selectedTargetId
+          activeView = 'village'
+          applyView()
+          renderVillageDetails()
           renderCommandDetails()
           renderMap()
         })

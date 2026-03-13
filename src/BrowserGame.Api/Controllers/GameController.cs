@@ -11,7 +11,12 @@ namespace api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class GameController(AppDbContext db, GameWorldService worldService, WorldMapService worldMapService, CommandTemplateService commandTemplateService) : ControllerBase
+public class GameController(
+    AppDbContext db,
+    GameWorldService worldService,
+    WorldMapService worldMapService,
+    CommandTemplateService commandTemplateService,
+    RallyTargetService rallyTargetService) : ControllerBase
 {
     private const int WorldWidth = 64;
     private const int WorldHeight = 64;
@@ -78,6 +83,8 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             .ToListAsync();
 
         var commandTemplates = await commandTemplateService.GetTemplatesAsync(userId);
+        var favoriteTargets = await rallyTargetService.GetFavoritesAsync(userId);
+        var recentTargets = await rallyTargetService.GetRecentTargetsAsync(userId, 8);
 
         var minX = chunkX * chunkSize;
         var minY = chunkY * chunkSize;
@@ -231,6 +238,24 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
                 template.Name,
                 template.UnitType,
                 template.UnitCount
+            }),
+            favoriteTargets = favoriteTargets
+                .Where(target => target.Village != null)
+                .Select(target => new
+                {
+                    target.Id,
+                    target.Label,
+                    villageId = target.VillageId,
+                    name = target.Village!.Name,
+                    target.Village.X,
+                    target.Village.Y
+                }),
+            recentTargets = recentTargets.Select(target => new
+            {
+                target.VillageId,
+                target.Name,
+                target.X,
+                target.Y
             }),
             visibleVillages = visibleOthers
         });
@@ -504,6 +529,42 @@ public class GameController(AppDbContext db, GameWorldService worldService, Worl
             return Unauthorized();
 
         var deleted = await commandTemplateService.DeleteTemplateAsync(userId, templateId);
+        if (!deleted)
+            return NotFound();
+
+        return NoContent();
+    }
+
+    [HttpPost("favorites")]
+    public async Task<IActionResult> SaveFavoriteTarget(SaveFavoriteTargetRequest request)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        if (request.VillageId == Guid.Empty)
+            return BadRequest("Village id is required.");
+
+        var favorites = await rallyTargetService.AddFavoriteAsync(userId, request.VillageId, request.Label, DateTime.UtcNow);
+        return Ok(favorites
+            .Where(target => target.Village != null)
+            .Select(target => new
+            {
+                target.Id,
+                target.Label,
+                villageId = target.VillageId,
+                name = target.Village!.Name,
+                target.Village.X,
+                target.Village.Y
+            }));
+    }
+
+    [HttpDelete("favorites/{favoriteId:guid}")]
+    public async Task<IActionResult> DeleteFavoriteTarget(Guid favoriteId)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var deleted = await rallyTargetService.DeleteFavoriteAsync(userId, favoriteId);
         if (!deleted)
             return NotFound();
 

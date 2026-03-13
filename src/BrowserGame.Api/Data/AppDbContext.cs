@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BuildingQueueItem> BuildingQueueItems => Set<BuildingQueueItem>();
     public DbSet<UnitQueueItem> UnitQueueItems => Set<UnitQueueItem>();
     public DbSet<CommandTemplate> CommandTemplates => Set<CommandTemplate>();
+    public DbSet<FavoriteTarget> FavoriteTargets => Set<FavoriteTarget>();
     public DbSet<BattleReport> BattleReports => Set<BattleReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -98,6 +99,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<CommandTemplate>()
             .HasIndex(t => new { t.UserId, t.UpdatedAt });
+
+        modelBuilder.Entity<FavoriteTarget>()
+            .HasOne(target => target.User)
+            .WithMany()
+            .HasForeignKey(target => target.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FavoriteTarget>()
+            .HasOne(target => target.Village)
+            .WithMany()
+            .HasForeignKey(target => target.VillageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<FavoriteTarget>()
+            .HasIndex(target => new { target.UserId, target.VillageId })
+            .IsUnique();
+
+        modelBuilder.Entity<FavoriteTarget>()
+            .HasIndex(target => new { target.UserId, target.UpdatedAt });
 
         modelBuilder.Entity<BattleReport>()
             .HasIndex(r => new { r.AttackerUserId, r.CreatedAt });
