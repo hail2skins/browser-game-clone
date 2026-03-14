@@ -4,6 +4,8 @@ export type AttackPreset = 'poke' | 'raid' | 'assault'
 export type SavedAttackTemplate = { id?: string; name: string; unitType: string; unitCount: number }
 export type MovementLike = { id: string; sourceVillageId: string; mission: string }
 export type QueueLike = { villageId: string }
+export type FavoriteTargetSummary = { id: string; villageId: string; label: string; name: string; x: number; y: number }
+export type RecentTargetSummary = { villageId: string; name: string; x: number; y: number }
 
 export function getSelectedVillage<T extends VillageSummary>(villages: T[], selectedVillageId: string | null): T | null {
   if (!villages.length) return null
@@ -187,4 +189,30 @@ export function buildCommandSummary(
     buildingQueueDepth: buildingQueue.filter(item => item.villageId === village.id).length,
     recruitmentQueueDepth: recruitmentQueue.filter(item => item.villageId === village.id).length
   }
+}
+
+export function buildQuickLaunches(
+  templates: SavedAttackTemplate[],
+  favorites: FavoriteTargetSummary[],
+  recentTargets: RecentTargetSummary[],
+  limit: number
+) {
+  const prioritizedTargets = [
+    ...favorites.map(target => ({ villageId: target.villageId, name: target.label || target.name })),
+    ...recentTargets
+      .filter(target => !favorites.some(favorite => favorite.villageId === target.villageId))
+      .map(target => ({ villageId: target.villageId, name: target.name }))
+  ]
+
+  const launches = templates.flatMap(template =>
+    prioritizedTargets.map(target => ({
+      key: `${template.id ?? template.name}:${target.villageId}`,
+      templateName: template.name,
+      targetName: target.name,
+      targetVillageId: target.villageId,
+      unitType: template.unitType,
+      unitCount: template.unitCount
+    })))
+
+  return launches.slice(0, Math.max(0, limit))
 }

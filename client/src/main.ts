@@ -1,6 +1,6 @@
 import './style.css'
 import Phaser from 'phaser'
-import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
+import { buildAttackPreview, buildCommandSummary, buildQuickLaunches, buildRecruitmentPreview, buildTemplateLabel, clampChunk, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, secondsUntil, type ReportFilter, type ReportOutcomeFilter, type ReportPerspectiveFilter, type SavedAttackTemplate } from './gameShellState'
 
 type AuthState = {
   token: string | null
@@ -1072,6 +1072,7 @@ async function mountGameShell() {
       const villageMovements = shell.movements.filter(m => m.sourceVillageId === selected.id)
       const favoriteTargets = shell.favoriteTargets
       const recentTargets = shell.recentTargets
+      const quickLaunches = buildQuickLaunches(attackTemplates, favoriteTargets, recentTargets, 6)
 
       commandDetailsHost.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -1142,6 +1143,21 @@ async function mountGameShell() {
                   </div>`).join('')
                 : '<div class="text-xs text-amber-100/70">No recent targets yet.</div>'}
             </div>
+          </div>
+        </div>
+        <div class="medieval-panel p-3 mt-4">
+          <div class="text-xs uppercase tracking-wide text-amber-200/85 mb-2">Quick Launches</div>
+          <div class="template-grid">
+            ${quickLaunches.length
+              ? quickLaunches.map(launch => `
+                <div class="template-card">
+                  <button class="template-apply command-quick-target" data-target-id="${launch.targetVillageId}">
+                    <strong>${launch.templateName}</strong>
+                    <span>${launch.targetName} • ${launch.unitType} x${launch.unitCount}</span>
+                  </button>
+                  <button class="template-delete command-quick-send" data-target-id="${launch.targetVillageId}" data-unit-type="${launch.unitType}" data-unit-count="${launch.unitCount}">Go</button>
+                </div>`).join('')
+              : '<div class="text-xs text-amber-100/70">No quick launches available yet.</div>'}
           </div>
         </div>
         <div class="medieval-panel p-3 mt-4">
@@ -1238,6 +1254,32 @@ async function mountGameShell() {
             await mountGameShell()
           } catch (err: any) {
             toast(err.message || 'Farm command failed', 'error')
+          }
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-quick-target').forEach((button) => {
+        button.addEventListener('click', () => {
+          selectedTargetId = button.dataset.targetId ?? selectedTargetId
+          renderVillageDetails()
+          renderCommandDetails()
+          renderMap()
+        })
+      })
+
+      commandDetailsHost.querySelectorAll<HTMLButtonElement>('.command-quick-send').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const targetId = button.dataset.targetId
+          const unitType = button.dataset.unitType
+          const unitCount = Number(button.dataset.unitCount || '0')
+          if (!targetId || !unitType) return
+
+          try {
+            await launchAttack(selected.id, targetId, unitType, unitCount)
+            toast(`Quick launch sent: ${unitType} x${unitCount}`, 'success')
+            await mountGameShell()
+          } catch (err: any) {
+            toast(err.message || 'Quick launch failed', 'error')
           }
         })
       })

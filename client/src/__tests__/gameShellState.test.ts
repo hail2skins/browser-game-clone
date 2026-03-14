@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttackPreview, buildCommandSummary, buildRecruitmentPreview, buildTemplateLabel, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, saveAttackTemplate, secondsUntil } from '../gameShellState'
+import { buildAttackPreview, buildCommandSummary, buildQuickLaunches, buildRecruitmentPreview, buildTemplateLabel, chunkForVillage, clampChunk, estimateAttackCarry, filterReports, formatCountdown, getAttackPresetCount, getInitialChunk, getSelectedVillage, getSortedTargets, getSuggestedFarmTargets, saveAttackTemplate, secondsUntil } from '../gameShellState'
 
 describe('gameShellState', () => {
   it('returns selected village when id exists', () => {
@@ -176,5 +176,28 @@ describe('gameShellState', () => {
       buildingQueueDepth: 1,
       recruitmentQueueDepth: 2
     })
+  })
+
+  it('builds quick launches from templates and prioritized targets', () => {
+    const quickLaunches = buildQuickLaunches(
+      [
+        { id: 't1', name: 'Raid', unitType: 'Spearman', unitCount: 8 },
+        { id: 't2', name: 'Sweep', unitType: 'Swordsman', unitCount: 5 }
+      ],
+      [
+        { id: 'f1', villageId: 'v1', label: 'Farm A', name: 'Barb A', x: 11, y: 12 },
+        { id: 'f2', villageId: 'v2', label: 'Farm B', name: 'Barb B', x: 13, y: 13 }
+      ],
+      [
+        { villageId: 'v3', name: 'Old Hit', x: 14, y: 14 }
+      ],
+      3
+    )
+
+    expect(quickLaunches).toEqual([
+      { key: 't1:v1', templateName: 'Raid', targetName: 'Farm A', targetVillageId: 'v1', unitType: 'Spearman', unitCount: 8 },
+      { key: 't1:v2', templateName: 'Raid', targetName: 'Farm B', targetVillageId: 'v2', unitType: 'Spearman', unitCount: 8 },
+      { key: 't1:v3', templateName: 'Raid', targetName: 'Old Hit', targetVillageId: 'v3', unitType: 'Spearman', unitCount: 8 }
+    ])
   })
 })
